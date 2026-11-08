@@ -1,0 +1,11 @@
+# Never upload secrets or big local folders to Vercel.
+.env
+.env.local
+.env.*.local
+node_modules
+android
+release
+dist
+scripts
+supabase
+*.log

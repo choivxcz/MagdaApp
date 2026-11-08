@@ -1,0 +1,7 @@
+# Keep shell scripts runnable on Mac/Linux and batch files on Windows
+* text=auto
+android/gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jar binary

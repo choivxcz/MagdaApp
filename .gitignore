@@ -1,0 +1,42 @@
+# =====================================================================
+# PRIVATE: never upload these. They contain passwords and secret keys.
+# =====================================================================
+.env
+.env.*
+.vercel/
+*.keystore
+*.jks
+key.properties
+google-services.json
+GoogleService-Info.plist
+
+# These two are safe to share (no secrets, only public values/templates)
+!.env.local.example
+!.env.production
+
+# =====================================================================
+# Built or downloaded files (can be recreated, no need to upload)
+# =====================================================================
+node_modules/
+dist/
+release/
+*.apk
+*.aab
+
+# Android build output
+android/app/build/
+android/build/
+android/.gradle/
+android/.idea/
+android/local.properties
+android/captures/
+
+# =====================================================================
+# Editor and system junk
+# =====================================================================
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+*.swp

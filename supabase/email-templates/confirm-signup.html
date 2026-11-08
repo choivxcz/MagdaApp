@@ -1,0 +1,19 @@
+<!-- Supabase → Authentication → Emails → Templates → "Confirm signup"
+     Subject: Confirm your Sakay Laguna account -->
+<div style="background:#f6f7f8;padding:32px 16px;font-family:Arial,Helvetica,sans-serif;color:#1f2124">
+  <div style="max-width:460px;margin:0 auto;background:#ffffff;border-radius:16px;padding:32px 28px;text-align:center">
+    <div style="display:inline-block;width:56px;height:56px;line-height:56px;border-radius:16px;background:#0e7c74;color:#ffffff;font-size:28px">🚙</div>
+    <h1 style="font-size:22px;margin:18px 0 8px">Welcome to Sakay Laguna!</h1>
+    <p style="font-size:15px;line-height:1.55;color:#646b75;margin:0 0 24px">
+      Tap the button below to confirm your email. Open this email on the phone where you installed the app and it will sign you in.
+    </p>
+    <a href="{{ .ConfirmationURL }}"
+       style="display:inline-block;background:#0e7c74;color:#ffffff;text-decoration:none;font-weight:bold;font-size:16px;padding:14px 28px;border-radius:12px">
+      Confirm my email
+    </a>
+    <p style="font-size:13px;line-height:1.5;color:#9aa1ab;margin:24px 0 0">
+      Didn’t sign up? You can ignore this email.<br>
+      Sakay Laguna · Magdalena ⇄ Santa Cruz jeepneys, live
+    </p>
+  </div>
+</div>

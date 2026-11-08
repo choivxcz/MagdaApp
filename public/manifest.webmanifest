@@ -1,0 +1,16 @@
+{
+  "name": "Sakay Laguna",
+  "short_name": "Sakay Laguna",
+  "description": "Live jeepneys, free seats and fares for the Magdalena – Santa Cruz, Laguna route.",
+  "start_url": "/#/map",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f7f8",
+  "theme_color": "#0e7c74",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

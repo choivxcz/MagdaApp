@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Sakay Laguna</string>
+    <string name="title_activity_main">Sakay Laguna</string>
+    <string name="package_name">ph.sakaylaguna.app</string>
+    <string name="custom_url_scheme">ph.sakaylaguna.app</string>
+</resources>
