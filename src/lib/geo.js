@@ -76,6 +76,15 @@ export function projectOnRoute(route, point) {
   return best;
 }
 
+// The part of a line between two distances along it, e.g. the stretch a
+// rider spends on the jeepney from the sakayan to the babaan.
+export function sliceAlong(line, from, to) {
+  const a = Math.max(0, Math.min(from, to));
+  const b = Math.min(line.length, Math.max(from, to));
+  const middle = line.coordinates.filter((_, i) => line.cumulative[i] > a && line.cumulative[i] < b);
+  return [pointAlong(line, a), ...middle, pointAlong(line, b)];
+}
+
 // The point that is `along` meters from the start of the route.
 export function pointAlong(route, along) {
   const { coordinates: c, cumulative: cum } = route;

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import Icon from './Icon.jsx';
+import Icon, { AiLogo } from './Icon.jsx';
+import { ScrollRow } from './ui.jsx';
 
 export const GREETING = {
   role: 'assistant',
@@ -59,7 +60,7 @@ export default function AssistantSheet({ chat, onSend, onShowTrip, onClose }) {
     <div className="driver-backdrop" onClick={onClose}>
       <section className="assistant-sheet" role="dialog" aria-modal="true" aria-label="Sakay AI assistant" onClick={(e) => e.stopPropagation()}>
         <header className="assistant-head">
-          <span className="assistant-badge"><Icon name="sparkle" size={20} /></span>
+          <AiLogo size={42} className="assistant-badge" />
           <div className="assistant-title">
             <b>Sakay AI</b>
             <span className="sub">Fares, jeepneys, seats · English or Tagalog</span>
@@ -70,6 +71,7 @@ export default function AssistantSheet({ chat, onSend, onShowTrip, onClose }) {
         <div className="assistant-log" ref={logRef} aria-live="polite">
           {chat.messages.map((m, i) => (
             <div key={i} className={`bubble-row ${m.role}`}>
+              {m.role === 'assistant' && <AiLogo size={30} className="bubble-avatar" />}
               <div className={`bubble ${m.role}`}>
                 <span><Rich text={m.text} /></span>
                 {m.trip && (
@@ -83,17 +85,18 @@ export default function AssistantSheet({ chat, onSend, onShowTrip, onClose }) {
           ))}
           {chat.busy && (
             <div className="bubble-row assistant">
+              <AiLogo size={30} className="bubble-avatar thinking" />
               <div className="bubble assistant typing" aria-label="Sakay AI is typing"><i /><i /><i /></div>
             </div>
           )}
         </div>
 
         {fresh && (
-          <div className="assistant-suggest" role="list" aria-label="Example questions">
+          <ScrollRow className="assistant-suggest-wrap" trackClassName="assistant-suggest" role="list" aria-label="Example questions">
             {SUGGESTIONS.map((s) => (
               <button key={s} role="listitem" className="suggest-chip" onClick={() => send(s)}>{s}</button>
             ))}
-          </div>
+          </ScrollRow>
         )}
 
         <form className="assistant-input" onSubmit={(e) => { e.preventDefault(); send(draft); }}>

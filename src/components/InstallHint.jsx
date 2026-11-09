@@ -1,6 +1,7 @@
 // One-time tip for iPhone Safari users: add the website to the home screen
 // so it opens full-screen like an app.
 import { Capacitor } from '@capacitor/core';
+import Icon from './Icon.jsx';
 import { usePrefs, setPrefs } from '../lib/prefs.js';
 
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -27,7 +28,7 @@ export default function InstallHint() {
         <b>Add Sakay Laguna to your Home Screen</b>
         <span>Tap <ShareIcon /> <b>Share</b> below, then <b>Add to Home Screen</b>. It opens full-screen like an app.</span>
       </div>
-      <button className="icon-btn small" onClick={() => setPrefs({ installHintDismissed: true })} aria-label="Dismiss">✕</button>
+      <button className="icon-btn small" onClick={() => setPrefs({ installHintDismissed: true })} aria-label="Dismiss"><Icon name="close" size={16} /></button>
     </div>
   );
 }

@@ -497,3 +497,86 @@ as $$
 $$;
 revoke all on function public.driver_card(uuid) from public;
 grant execute on function public.driver_card(uuid) to anon, authenticated;
+
+-- =====================================================================
+-- 9. "I'm waiting here": passengers tell on-duty drivers where they are
+--    waiting and how many they are. No names are shared, the spot is
+--    rounded to about 10 m, and a signal ends by itself after 20 minutes.
+-- =====================================================================
+
+create table if not exists public.waiting_signals (
+  user_id    uuid primary key references auth.users (id) on delete cascade,
+  route_id   text not null,
+  direction  text not null check (direction in ('to_santa_cruz', 'to_magdalena')),
+  lat        double precision not null check (lat between -90 and 90),
+  lng        double precision not null check (lng between -180 and 180),
+  people     smallint not null default 1 check (people between 1 and 6),
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+
+alter table public.waiting_signals enable row level security;
+
+-- Passengers can see their own signal; changes go through the functions below.
+drop policy if exists "own waiting signal" on public.waiting_signals;
+create policy "own waiting signal" on public.waiting_signals
+  for select to authenticated
+  using (user_id = (select auth.uid()));
+
+-- Start (or move / refresh) my signal. Times come from the server clock.
+create or replace function public.wait_here(
+  p_route_id text, p_direction text, p_lat double precision, p_lng double precision, p_people int default 1
+)
+returns timestamptz
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_expires timestamptz := now() + interval '20 minutes';
+begin
+  if auth.uid() is null then raise exception 'Sign in first.'; end if;
+  -- Old signals are cleaned up whenever someone starts a new one.
+  delete from public.waiting_signals where expires_at < now() - interval '1 hour';
+  insert into public.waiting_signals (user_id, route_id, direction, lat, lng, people, created_at, expires_at)
+  values (auth.uid(), p_route_id, p_direction, p_lat, p_lng, greatest(1, least(6, coalesce(p_people, 1))), now(), v_expires)
+  on conflict (user_id) do update
+    set route_id = excluded.route_id, direction = excluded.direction, lat = excluded.lat, lng = excluded.lng,
+        people = excluded.people, created_at = excluded.created_at, expires_at = excluded.expires_at;
+  return v_expires;
+end;
+$$;
+revoke all on function public.wait_here(text, text, double precision, double precision, int) from public, anon;
+grant execute on function public.wait_here(text, text, double precision, double precision, int) to authenticated;
+
+create or replace function public.stop_waiting()
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  delete from public.waiting_signals where user_id = (select auth.uid());
+$$;
+revoke all on function public.stop_waiting() from public, anon;
+grant execute on function public.stop_waiting() to authenticated;
+
+-- What an approved driver sees: where people wait and how many. No names, no ids.
+create or replace function public.waiting_for_drivers(p_route_id text)
+returns table (direction text, lat double precision, lng double precision, people int, minutes_waiting int)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select w.direction,
+         round(w.lat::numeric, 4)::double precision,
+         round(w.lng::numeric, 4)::double precision,
+         w.people::int,
+         floor(extract(epoch from now() - w.created_at) / 60)::int
+    from public.waiting_signals w
+   where w.route_id = p_route_id
+     and w.expires_at > now()
+     and public.is_approved_driver();
+$$;
+revoke all on function public.waiting_for_drivers(text) from public, anon;
+grant execute on function public.waiting_for_drivers(text) to authenticated;

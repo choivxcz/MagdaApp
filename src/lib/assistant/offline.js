@@ -142,7 +142,7 @@ export function answerOffline(question, ctx) {
     ].join('\n'));
   }
 
-  if (has(text, WORDS.thanks)) return reply(t('Walang anuman! Ingat sa biyahe. 🚙', 'You’re welcome! Have a safe ride. 🚙'));
+  if (has(text, WORDS.thanks)) return reply(t('Walang anuman! Ingat sa biyahe.', 'You’re welcome! Have a safe ride.'));
   if (has(text, WORDS.greet)) return reply(helpText(t, true));
 
   // Just a place name ("Capitol"): use the remembered pickup if there is one.
@@ -235,7 +235,7 @@ function nextJeepReply({ t, route, jeepneys, pickupId, direction, reply }) {
 
 function helpText(t, greeting) {
   return [
-    greeting ? t('Kumusta! Ako si **Sakay AI**. 👋', 'Hi! I’m **Sakay AI**. 👋') : t('Pasensya, hindi ko masyadong naintindihan.', 'Sorry, I didn’t quite get that.'),
+    greeting ? t('Kumusta! Ako si **Sakay AI**.', 'Hi! I’m **Sakay AI**.') : t('Pasensya, hindi ko masyadong naintindihan.', 'Sorry, I didn’t quite get that.'),
     t('Pwede mo akong tanungin ng:', 'You can ask me things like:'),
     t('• "Magkano Magdalena papuntang Santa Cruz?"', '• "How much from Magdalena to Santa Cruz?"'),
     t('• "May jeep ba papuntang Santa Cruz ngayon?"', '• "Any jeepneys to Santa Cruz right now?"'),

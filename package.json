@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
+    "dev:https": "vite --host --mode https",
     "build": "vite build",
     "preview": "vite preview",
     "android": "vite build && npx cap sync android && npx cap open android",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.0",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "pg": "^8.23.1",
     "vercel": "^65.12.1",

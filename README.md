@@ -3,7 +3,7 @@
 Live jeepney tracker for the **Magdalena – Santa Cruz, Laguna** route.
 
 - **Riders** see jeepneys moving on the map, colored by direction
-  (blue = to Santa Cruz, orange = to Magdalena), how many seats are free,
+  (blue = to Santa Cruz, teal = to Magdalena), how many seats are free,
   arrival estimates, and the fare from their pickup to their drop-off stop
   (regular and Student/Senior/PWD).
 - **Drivers** sign in, press **Start trip**, and their phone shares its GPS
@@ -51,6 +51,18 @@ npm run dev
 Open the address it prints (for example `http://localhost:5173`). To try it
 on your phone, connect the phone to the same Wi-Fi and open the
 `Network:` address it prints.
+
+**GPS on a phone needs https.** Browsers block location on `http://192.168…`
+addresses ("Only secure origins are allowed"). To test GPS from a phone, run:
+
+```bash
+npm run dev:https
+```
+
+and open the `https://192.168…` Network address. The phone will warn that the
+connection isn't private (the certificate is home-made): tap **Advanced →
+Proceed**. The live website and the Android app are already secure, so riders
+never see this.
 
 Without a database the app runs in **demo mode**: three simulated jeepneys
 drive back and forth so you can test the rider screen.

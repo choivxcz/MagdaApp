@@ -93,6 +93,23 @@ try {
   const res = await fetch(anon.storage.from('photos').getPublicUrl(`${userId}/jeepney.jpg`).data.publicUrl);
   check(res.ok, 'Photos load from their public link', `HTTP ${res.status}`);
 
+  // "I'm waiting here": signed-in passengers only; approved drivers see spots without names.
+  const spot = { p_route_id: 'magdalena-santa-cruz', p_direction: 'to_santa_cruz', p_lat: 14.23456, p_lng: 121.43219, p_people: 3 };
+  const isTestSpot = (w) => Math.abs(w.lat - 14.2346) < 1e-6 && Math.abs(w.lng - 121.4322) < 1e-6;
+  r = await anon.rpc('wait_here', spot);
+  check(!!r.error, 'Guests cannot send a waiting signal');
+  r = await driver.rpc('wait_here', spot);
+  check(!r.error, 'Signed-in passenger can say "I\'m waiting here"', r.error?.message);
+  r = await anon.rpc('waiting_for_drivers', { p_route_id: 'magdalena-santa-cruz' });
+  check(!!r.error || !(r.data ?? []).length, 'Guests cannot see who is waiting');
+  r = await driver.rpc('waiting_for_drivers', { p_route_id: 'magdalena-santa-cruz' });
+  const seen = (r.data ?? []).find(isTestSpot);
+  check(!r.error && seen?.people === 3, 'Drivers see the waiting spot and group size', r.error?.message ?? JSON.stringify(r.data));
+  check(seen && !('user_id' in seen), 'Drivers do not see who is waiting');
+  r = await driver.rpc('stop_waiting');
+  r = await driver.rpc('waiting_for_drivers', { p_route_id: 'magdalena-santa-cruz' });
+  check(!r.error && !(r.data ?? []).some(isTestSpot), 'Passenger can cancel the waiting signal', r.error?.message);
+
   // A driver cannot move someone else's jeepney.
   r = await driver.from('jeepney_locations').upsert({ driver_id: crypto.randomUUID(), ...location() }, { onConflict: 'driver_id' });
   check(!!r.error, "Driver cannot post as another jeepney");

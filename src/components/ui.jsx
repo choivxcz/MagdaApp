@@ -1,5 +1,5 @@
 // Shared layout pieces: page titles, menu rows, bottom navigation.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 
 export function navigate(path) {
@@ -66,6 +66,89 @@ export function BottomNav({ tabs, current }) {
         </a>
       ))}
     </nav>
+  );
+}
+
+// A sideways-scrolling row of chips. Phones swipe it; computers can also use
+// the mouse wheel, click-and-drag, or the ‹ › buttons. Faded edges show
+// there is more to see.
+export function ScrollRow({ className = '', trackClassName = '', children, ...trackProps }) {
+  const ref = useRef(null);
+  const drag = useRef(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const start = el.scrollLeft > 4;
+    const end = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setEdges((e) => (e.start === start && e.end === end ? e : { start, end }));
+  }, []);
+
+  useEffect(update); // children may change the width
+
+  useEffect(() => {
+    const el = ref.current;
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    // Turn an up/down wheel into sideways scrolling, until the row's end.
+    const onWheel = (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      const max = el.scrollWidth - el.clientWidth;
+      if (max <= 0 || (e.deltaY < 0 && el.scrollLeft <= 0) || (e.deltaY > 0 && el.scrollLeft >= max - 1)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => { ro.disconnect(); el.removeEventListener('wheel', onWheel); };
+  }, [update]);
+
+  // Click-and-drag with a mouse. A drag doesn't count as tapping a chip.
+  const onPointerDown = (e) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    drag.current = { x: e.clientX, left: ref.current.scrollLeft, moved: false, id: e.pointerId };
+  };
+  const onPointerMove = (e) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.x;
+    if (!d.moved && Math.abs(dx) > 5) {
+      d.moved = true;
+      ref.current.setPointerCapture(d.id);
+    }
+    if (d.moved) ref.current.scrollLeft = d.left - dx;
+  };
+  const onPointerUp = () => {
+    if (drag.current?.moved) {
+      const stop = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+      ref.current.addEventListener('click', stop, { capture: true, once: true });
+      setTimeout(() => ref.current?.removeEventListener('click', stop, { capture: true }), 0);
+    }
+    drag.current = null;
+  };
+
+  const page = (dir) => ref.current.scrollBy({ left: dir * ref.current.clientWidth * 0.8, behavior: 'smooth' });
+
+  return (
+    <div className={`scroll-row ${edges.start ? 'more-start' : ''} ${edges.end ? 'more-end' : ''} ${className}`}>
+      <div
+        ref={ref} className={`scroll-row-track ${trackClassName}`} onScroll={update}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+        {...trackProps}
+      >
+        {children}
+      </div>
+      {edges.start && (
+        <button type="button" className="scroll-arrow start" onClick={() => page(-1)} tabIndex={-1} aria-hidden="true">
+          <Icon name="back" size={16} />
+        </button>
+      )}
+      {edges.end && (
+        <button type="button" className="scroll-arrow end" onClick={() => page(1)} tabIndex={-1} aria-hidden="true">
+          <Icon name="chevron" size={16} />
+        </button>
+      )}
+    </div>
   );
 }
 

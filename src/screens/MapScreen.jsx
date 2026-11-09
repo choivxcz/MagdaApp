@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import MapView, { MapButtons } from '../components/MapView.jsx';
-import Icon from '../components/Icon.jsx';
-import { projectOnRoute } from '../lib/geo.js';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import MapView, { MapButtons, GUIDE_COLOR } from '../components/MapView.jsx';
+import Icon, { AiLogo } from '../components/Icon.jsx';
+import { projectOnRoute, pointAlong, sliceAlong } from '../lib/geo.js';
+import { walkMinutes } from '../lib/walking.js';
+import { useSakayan } from '../lib/useSakayan.js';
 import { computeFare, peso } from '../lib/fare.js';
 import { DIRECTIONS, DIRECTION_KEYS, seatStatus } from '../lib/directions.js';
 import { usePrefs, setPrefs } from '../lib/prefs.js';
@@ -9,12 +11,15 @@ import { useAuth } from '../lib/auth.jsx';
 import { saveTrip } from '../lib/account.js';
 import { isDemo } from '../lib/supabase.js';
 import InstallHint from '../components/InstallHint.jsx';
+import WaitingCard from '../components/WaitingCard.jsx';
 import DriverSheet from '../components/DriverSheet.jsx';
 import AssistantSheet, { GREETING } from '../components/AssistantSheet.jsx';
+import { ScrollRow } from '../components/ui.jsx';
+import { gpsErrorText } from '../lib/gps.js';
 import { askAssistant } from '../lib/assistant/client.js';
 
 const AVG_SPEED_MPS = 20 / 3.6; // jeepneys average ~20 km/h with stops
-const MAX_OFF_ROUTE_M = 300; // pickup must be this close to the route
+const MAX_OFF_ROUTE_M = 1500; // pickup must be this close to the route (we show the walk)
 const MIN_RIDE_M = 100;
 
 function agoText(date) {
@@ -91,6 +96,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   const [openJeepId, setOpenJeepId] = useState(null);
   const closeJeep = useCallback(() => setOpenJeepId(null), []);
   const [chatOpen, setChatOpen] = useState(false);
+  const handleDrag = useRef(null);
   const [chat, setChat] = useState({ messages: [GREETING], busy: false, memory: {} });
   const closeChat = useCallback(() => setChatOpen(false), []);
 
@@ -116,8 +122,18 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
     }
   }, [request, route]);
 
-  const trip = useMemo(() => resolveTrip(route, fromStopId, fromPoint, toId), [route, fromStopId, fromPoint, toId]);
-  const tooFar = trip && trip.off > MAX_OFF_ROUTE_M;
+  const baseTrip = useMemo(() => resolveTrip(route, fromStopId, fromPoint, toId), [route, fromStopId, fromPoint, toId]);
+  const tooFar = baseTrip && baseTrip.off > MAX_OFF_ROUTE_M;
+  // The passenger's sakayan: the shortest walk to a street the jeepneys pass
+  // (once a destination is set: the right direction, before the babaan).
+  const sakayan = useSakayan(route, fromPoint, baseTrip && !tooFar ? { direction: baseTrip.direction, maxAlong: baseTrip.to.along - MIN_RIDE_M } : {});
+  const sakayanOk = !!sakayan && !sakayan.tooFar;
+  // Fare, ride time and arrivals are counted from the sakayan.
+  const trip = useMemo(() => (
+    baseTrip && sakayanOk && sakayan.direction === baseTrip.direction
+      ? { ...baseTrip, along: sakayan.along, dist: baseTrip.to.along - sakayan.along }
+      : baseTrip
+  ), [baseTrip, sakayan]); // eslint-disable-line react-hooks/exhaustive-deps
   const fare = trip && !tooFar ? computeFare(trip.dist) : null;
   const activeDirection = trip?.direction ?? (dirFilter !== 'all' ? dirFilter : null);
 
@@ -131,6 +147,32 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
       .sort((a, b) => a.gap - b.gap);
   }, [shown, trip, tooFar]);
   const next = approaching[0];
+
+  // Violet guide: walk to the sakayan, then (with a destination) ride to the babaan.
+  const hasRide = !!(trip && !tooFar);
+  const board = sakayanOk ? sakayan.point : hasRide ? pointAlong(trip.leg, trip.along) : null;
+  const boardKey = board ? board.map((n) => n.toFixed(5)).join(',') : '';
+  const guide = useMemo(() => (board ? {
+    board,
+    alight: hasRide ? pointAlong(trip.leg, trip.to.along) : null,
+    ride: hasRide ? sliceAlong(trip.leg, trip.along, trip.to.along) : null,
+    // Only ever the street path (none while it loads).
+    walk: sakayanOk ? sakayan.walk?.coords ?? null : null,
+  } : null), [boardKey, hasRide, trip?.to.id, trip?.direction, trip?.along, sakayan]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Zoom so the passenger sees both themselves and the sakayan.
+  useEffect(() => {
+    const coords = sakayanOk && !sakayan.loading ? sakayan.walk?.coords ?? (sakayan.walkFailed ? [fromPoint, sakayan.point] : null) : null;
+    if (!map || !coords) return;
+    const xs = coords.map((c) => c[0]);
+    const ys = coords.map((c) => c[1]);
+    map.fitBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], { padding: 60, maxZoom: 16.5, duration: 600 });
+  }, [map, sakayan]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "I'm waiting here": the sakayan (or chosen stop) and which way they can ride from it.
+  const servedAt = (id) => Object.keys(route.legs).filter((d) => route.legs[d].stops.some((s) => s.id === id));
+  const waitPoint = sakayanOk ? sakayan.point : hasRide ? board : fromStopId ? stopById(fromStopId)?.coord ?? null : null;
+  const waitDirections = hasRide ? [trip.direction] : sakayanOk ? sakayan.directions : fromStopId ? servedAt(fromStopId) : [];
 
   const pickupPin = fromPoint ?? (fromStopId ? stopById(fromStopId)?.coord : null);
 
@@ -169,7 +211,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
         pickOnMap(pt);
         map?.flyTo({ center: pt, zoom: Math.max(map.getZoom(), 14) });
       },
-      (e) => setMsg({ kind: 'warn', text: `Couldn’t get your location (${e.message}). Choose a stop instead.` }),
+      (e) => setMsg({ kind: 'warn', text: `${gpsErrorText(e)} You can also choose a stop instead.` }),
       { enableHighAccuracy: true, timeout: 15000 },
     );
   }
@@ -222,7 +264,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   return (
     <div className={`map-screen ${expanded ? 'sheet-expanded' : ''}`}>
       <MapView
-        route={route} jeepneys={shown} pickup={pickupPin} me={me} onPick={pickOnMap} onJeepTap={setOpenJeepId}
+        route={route} jeepneys={shown} pickup={pickupPin} me={me} guide={guide} onPick={pickOnMap} onJeepTap={setOpenJeepId}
         activeDirection={activeDirection} visible={visible} onReady={setMap}
         padding={{ top: 170, bottom: expanded ? 420 : 230 }}
       />
@@ -235,7 +277,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
               <select value={fromPoint ? 'point' : fromStopId} onChange={(e) => onFromChange(e.target.value)} aria-label="From">
                 <option value="" disabled>Where are you?</option>
                 {fromPoint && <option value="point" disabled>{me && fromPoint === me ? 'My location' : 'Point on map'}</option>}
-                <option value="gps">📍 Use my location</option>
+                <option value="gps">Use my location (GPS)</option>
                 {stops.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </label>
@@ -252,25 +294,47 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
             <Icon name="swap" size={20} />
           </button>
         </div>
-        <div className="chip-row" role="list" aria-label="Quick destinations">
+        <ScrollRow className="chip-row-wrap" trackClassName="chip-row" role="list" aria-label="Quick destinations">
           {stops.map((s) => (
             <button key={s.id} role="listitem" className={`chip ${toId === s.id ? 'on' : ''}`} onClick={() => chooseTo(s.id)}>
               <Icon name={s.icon} size={15} /> {s.short}
             </button>
           ))}
-        </div>
+        </ScrollRow>
       </div>
 
       <div className="map-float-right">
         <MapButtons map={map} onLocate={locateMe}>
-          <button className="ai-fab" onClick={() => setChatOpen(true)} aria-label="Ask Sakay AI">
-            <Icon name="sparkle" size={18} /> Ask AI
+          <button className="ai-fab" onClick={() => setChatOpen(true)} aria-label="Ask Sakay AI" title="Ask Sakay AI">
+            <AiLogo size={62} />
           </button>
         </MapButtons>
       </div>
 
-      <section className={`bottom-sheet ${expanded ? 'expanded' : ''}`} aria-label="Trip details">
-        <button className="sheet-handle" onClick={() => setExpanded(!expanded)} aria-label={expanded ? 'Show less' : 'Show more'}>
+      <section
+        className={`bottom-sheet ${expanded ? 'expanded' : ''}`} aria-label="Trip details"
+        // Scrolling down in the small panel opens it fully.
+        onScroll={(e) => { if (!expanded && e.currentTarget.scrollTop > 40) setExpanded(true); }}
+      >
+        <button
+          className="sheet-handle" aria-label={expanded ? 'Show less' : 'Show more'} aria-expanded={expanded}
+          onPointerDown={(e) => {
+            handleDrag.current = { y: e.clientY, swiped: false };
+            e.currentTarget.setPointerCapture(e.pointerId); // keep following the finger off the handle
+          }}
+          onPointerUp={(e) => {
+            const d = handleDrag.current;
+            if (!d) return;
+            const dy = e.clientY - d.y;
+            // Swipe up opens the panel, swipe down closes it.
+            if (Math.abs(dy) > 25) { d.swiped = true; setExpanded(dy < 0); }
+          }}
+          onClick={() => {
+            if (handleDrag.current?.swiped) { handleDrag.current = null; return; }
+            handleDrag.current = null;
+            setExpanded(!expanded);
+          }}
+        >
           <span />
         </button>
 
@@ -307,7 +371,32 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
           </div>
         )}
 
-        {tooFar && <p className="warn">Your pickup is {Math.round(trip.off)} m from the route. Tap closer to the colored line or pick a stop.</p>}
+        {tooFar && <p className="warn">Your pickup is {(trip.off / 1000).toFixed(1)} km from the jeepney route. Pick a stop, or tap closer to the colored line.</p>}
+        {!trip && sakayan?.tooFar && <p className="warn">You’re {(sakayan.off / 1000).toFixed(1)} km from the nearest street the jeepneys pass. Pick a stop, or tap the map closer to the colored line.</p>}
+        {fromPoint && sakayanOk && (
+          <div className="walk-hint">
+            <span className="walk-dot" />
+            <span>
+              {sakayan.loading
+                ? <>Finding the walking route to the nearest <b>sakayan</b>…</>
+                : sakayan.walkFailed
+                  ? <>Couldn’t load walking directions right now. Walk to the violet <b>Sakayan</b> pin on the map. <button className="link-btn small" onClick={sakayan.retry}>Try again</button></>
+                : !sakayan.walk
+                  ? <>You’re on the jeepney route. Wait here for a jeepney{hasRide ? <>, then ride to the <b>babaan</b></> : ''}.</>
+                  : (
+                    <>
+                      Walk <b>~{sakayan.walk.meters < 1000 ? `${Math.round(sakayan.walk.meters / 10) * 10} m` : `${(sakayan.walk.meters / 1000).toFixed(1)} km`}</b> (~{walkMinutes(sakayan.walk.meters)} min) to the {hasRide ? '' : 'nearest '}<b>sakayan</b>
+                      {hasRide ? <>, then ride to the <b>babaan</b>.</> : '.'}
+                    </>
+                  )}
+            </span>
+            {!hasRide && sakayan.directions.length > 0 && (
+              <span className="walk-sub">
+                Jeepneys {sakayan.directions.map((d) => DIRECTIONS[d].label.replace(/^To /, 'to ')).join(' and ')} pass there.
+              </span>
+            )}
+          </div>
+        )}
         {fromStopId && toId && !trip && <p className="warn">No jeepney on this route goes from there to there. Try the other direction.</p>}
         {msg && (
           <p className={msg.kind === 'ok' ? 'ok' : msg.kind === 'warn' ? 'warn' : 'hint'}>
@@ -316,6 +405,8 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
           </p>
         )}
         {error && <p className="warn">Couldn’t load jeepneys: {error}</p>}
+
+        {!isDemo && <WaitingCard route={route} user={user} point={waitPoint} directions={waitDirections} />}
 
         {trip && !tooFar && (
           <div className={`next-jeep ${next ? '' : 'none'}`}>
@@ -344,6 +435,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
         )}
 
         <div className="legend-row">
+          {guide && <span><i style={{ background: GUIDE_COLOR }} />Your trip</span>}
           {DIRECTION_KEYS.map((d) => <span key={d}><i style={{ background: DIRECTIONS[d].color }} />{DIRECTIONS[d].label}</span>)}
         </div>
         <p className="fineprint">Tap a jeepney to see its driver. Times, seats and fares are estimates. Not affiliated with LTFRB or any LGU.</p>

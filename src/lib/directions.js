@@ -2,7 +2,7 @@
 // the driver screen always match.
 export const DIRECTIONS = {
   to_santa_cruz: { label: 'To Santa Cruz', short: '→ Sta. Cruz', color: '#1a73e8', className: 'dir-sc' },
-  to_magdalena: { label: 'To Magdalena', short: '→ Magdalena', color: '#e8710a', className: 'dir-mg' },
+  to_magdalena: { label: 'To Magdalena', short: '→ Magdalena', color: '#0d9488', className: 'dir-mg' },
 };
 
 export const DIRECTION_KEYS = Object.keys(DIRECTIONS);

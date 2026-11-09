@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import MapView, { MapButtons } from '../components/MapView.jsx';
+import Icon from '../components/Icon.jsx';
 import { sendLocation, endTrip } from '../lib/locations.js';
 import { projectOnRoute } from '../lib/geo.js';
+import { gpsErrorText } from '../lib/gps.js';
+import { fetchWaitingForDrivers } from '../lib/waiting.js';
 import { DIRECTIONS, DIRECTION_KEYS } from '../lib/directions.js';
 import { useAuth } from '../lib/auth.jsx';
 import { Avatar, navigate } from '../components/ui.jsx';
@@ -9,8 +12,37 @@ import { Avatar, navigate } from '../components/ui.jsx';
 const SEND_EVERY_MS = 10000; // one GPS update every 10 s keeps data use low
 const SEAT_SEND_DELAY_MS = 800; // wait for a burst of taps, then send once
 const END_OF_LEG_M = 80; // this close to the end of a leg = arrived
+const WAITING_POLL_MS = 15000; // how often to check for waiting passengers
 
 const other = (d) => (d === 'to_santa_cruz' ? 'to_magdalena' : 'to_santa_cruz');
+
+// Passengers waiting ahead in this direction, grouped by the nearest stop.
+function WaitingAhead({ groups, otherDirection }) {
+  const total = groups.reduce((n, g) => n + g.people, 0);
+  return (
+    <div className="waiting-list">
+      <div className="row spread">
+        <span className="label icon-label"><Icon name="waiting" size={18} /> Waiting ahead</span>
+        <span className={`seat-chip ${total ? 'seats-few' : 'seats-unknown'}`}>{total} {total === 1 ? 'person' : 'people'}</span>
+      </div>
+      {groups.length ? (
+        <ul>
+          {groups.slice(0, 4).map((g) => (
+            <li key={g.stop.id}>
+              <b>{g.people}</b> near {g.stop.short ?? g.stop.name}
+              <span className="sub">
+                {g.aheadM != null && ` · ${g.aheadM < 1000 ? `${Math.round(g.aheadM / 50) * 50} m` : `${(g.aheadM / 1000).toFixed(1)} km`} ahead`} · waiting {g.longest} min
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="hint">No one is waiting ahead right now.</p>
+      )}
+      {otherDirection > 0 && <p className="fineprint">{otherDirection} waiting for the other direction.</p>}
+    </div>
+  );
+}
 
 function SeatCounter({ taken, capacity, onChange }) {
   const free = Math.max(0, capacity - taken);
@@ -56,6 +88,45 @@ export default function DriveScreen({ route, userId, driver, visible, onTripChan
   seatsRef.current = seatsTaken;
 
   const capacity = driver.seat_capacity ?? 20;
+
+  // Passengers who tapped "I'm waiting here" (checked while this screen is open).
+  const [waiting, setWaiting] = useState([]);
+  useEffect(() => {
+    if (!visible) return undefined;
+    let cancelled = false;
+    const load = () => {
+      if (document.hidden) return;
+      fetchWaitingForDrivers(route.id).then((w) => { if (!cancelled) setWaiting(w); }).catch(() => {});
+    };
+    load();
+    const t = setInterval(load, WAITING_POLL_MS);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [visible, route.id]);
+
+  const waitingAhead = useMemo(() => {
+    const leg = route.legs[direction];
+    const myAlong = me ? projectOnRoute(leg, me).along : null;
+    const groups = new Map();
+    for (const w of waiting) {
+      if (w.direction !== direction) continue;
+      const along = projectOnRoute(leg, w.point).along;
+      if (myAlong != null && along < myAlong - 50) continue; // already passed them
+      const stop = leg.stops.reduce((best, st) => (Math.abs(st.along - along) < Math.abs(best.along - along) ? st : best));
+      const g = groups.get(stop.id) ?? { stop, people: 0, along, longest: 0 };
+      g.people += w.people;
+      g.along = Math.min(g.along, along);
+      g.longest = Math.max(g.longest, w.minutesWaiting);
+      groups.set(stop.id, g);
+    }
+    return [...groups.values()]
+      .sort((a, b) => a.along - b.along)
+      .map((g) => ({ ...g, aheadM: myAlong != null ? Math.max(0, g.along - myAlong) : null }));
+  }, [waiting, direction, me, route]);
+  const waitingOther = waiting.filter((w) => w.direction !== direction).reduce((n, w) => n + w.people, 0);
+  const waitingOnMap = useMemo(
+    () => waiting.map((w) => ({ point: w.point, people: w.people, dim: w.direction !== direction })),
+    [waiting, direction],
+  );
 
   useEffect(() => onTripChange?.(onTrip), [onTrip, onTripChange]);
 
@@ -111,7 +182,7 @@ export default function DriveScreen({ route, userId, driver, visible, onTripChan
     setStatus('Waiting for GPS…');
     watchId.current = navigator.geolocation.watchPosition(
       onPosition,
-      (e) => setStatus(`GPS error: ${e.message}`),
+      (e) => setStatus(gpsErrorText(e)),
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
     );
   }
@@ -145,7 +216,7 @@ export default function DriveScreen({ route, userId, driver, visible, onTripChan
 
   return (
     <div className="map-screen drive">
-      <MapView route={route} me={me} activeDirection={direction} visible={visible} onReady={(m) => { mapRef.current = m; setMap(m); }} padding={{ top: 30, bottom: 460 }} />
+      <MapView route={route} me={me} waiting={waitingOnMap} activeDirection={direction} visible={visible} onReady={(m) => { mapRef.current = m; setMap(m); }} padding={{ top: 30, bottom: 460 }} />
       <div className="map-float-right drive">
         <MapButtons map={map} onLocate={me ? () => map?.flyTo({ center: me, zoom: 15 }) : undefined} />
       </div>
@@ -158,7 +229,7 @@ export default function DriveScreen({ route, userId, driver, visible, onTripChan
               <div className="big">{driver.plate}</div>
             </div>
           </div>
-          <span className={`status-pill ${onTrip ? 'live' : ''}`}>{onTrip ? '● On trip' : 'Off duty'}</span>
+          <span className={`status-pill ${onTrip ? 'live' : ''}`}>{onTrip ? <><i className="live-dot" aria-hidden="true" />On trip</> : 'Off duty'}</span>
         </div>
 
         <div className="segmented" role="group" aria-label="Direction">
@@ -169,12 +240,14 @@ export default function DriveScreen({ route, userId, driver, visible, onTripChan
           ))}
         </div>
 
+        <WaitingAhead groups={waitingAhead} otherDirection={waitingOther} />
+
         <SeatCounter taken={seatsTaken} capacity={capacity} onChange={changeSeats} />
 
         {onTrip ? (
-          <button className="btn danger big-btn" onClick={stop}>■ End trip</button>
+          <button className="btn danger big-btn icon-text center" onClick={stop}><Icon name="stop" size={18} fill="currentColor" /> End trip</button>
         ) : (
-          <button className="btn primary big-btn" onClick={start}>▶ Start trip</button>
+          <button className="btn primary big-btn icon-text center" onClick={start}><Icon name="play" size={18} fill="currentColor" /> Start trip</button>
         )}
         {status && <p className="hint">{status}</p>}
         {(!photos.avatar || !photos.jeepney) && (

@@ -93,7 +93,7 @@ function Drivers({ onChange }) {
       {rows === null ? (
         <p className="hint">Loading…</p>
       ) : shown.length === 0 ? (
-        <p className="hint center">{filter === 'pending' ? 'No applications waiting. 🎉' : 'Nobody here.'}</p>
+        <p className="hint center">{filter === 'pending' ? 'No applications waiting. All caught up.' : 'Nobody here.'}</p>
       ) : (
         shown.map((d) => {
           const avatar = photoUrl(d.user_id, 'avatar', d.avatar_v);

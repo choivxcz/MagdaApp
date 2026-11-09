@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PageHeader, MenuGroup, MenuRow, Segmented, Avatar, navigate } from '../components/ui.jsx';
 import PhotoField from '../components/PhotoField.jsx';
-import Icon from '../components/Icon.jsx';
+import Icon, { Logo } from '../components/Icon.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { usePrefs, setPrefs } from '../lib/prefs.js';
 import { supabase, isDemo } from '../lib/supabase.js';
@@ -393,7 +393,7 @@ function About() {
     <div className="page">
       <PageHeader title="About" back="more" />
       <div className="page-body prose">
-        <div className="about-logo">🚙</div>
+        <div className="about-logo"><Logo size={88} /></div>
         <h2>Sakay Laguna</h2>
         <p>
           A free commuter app for the Magdalena – Santa Cruz, Laguna jeepney route. See jeepneys live on the map,
@@ -422,12 +422,14 @@ function Privacy() {
           <li><b>Account:</b> your email, name and fare type, so you can sign in and keep settings.</li>
           <li><b>Photos (optional):</b> your profile picture, and for drivers a photo of the jeepney. A commuter’s photo is only shown to them. For approved drivers, riders who tap the jeepney on the map see the driver’s name, profile picture and jeepney photo.</li>
           <li><b>Saved trips:</b> the stops you saved. Only you can see them.</li>
+          <li><b>“I’m waiting here” (optional):</b> the spot where you wait, your direction and how many you are. On-duty drivers see it without your name. It ends after 20 minutes or when you cancel, and is deleted soon after.</li>
           <li><b>Ride reports:</b> what you report, linked to your account so we can follow up.</li>
           <li><b>Drivers only:</b> the jeepney’s location and passenger count during a trip. Only the latest position is kept; it is hidden when the trip ends. Phone, license and franchise numbers are seen only by the admin.</li>
         </ul>
         <h3>What we don’t do</h3>
         <ul>
-          <li>We don’t track riders’ locations. Your GPS is used on your phone only, to find your pickup point.</li>
+          <li>We don’t track or store riders’ locations. When you use your location, it is sent once to the free OpenStreetMap walking-directions service (routing.openstreetmap.de) to draw your walk to the sakayan, and is not saved by us.</li>
+          <li>Questions you type in <b>Ask AI</b> go to Google Gemini to be answered (not your location). Don’t type personal details there.</li>
           <li>We don’t sell your data or show ads.</li>
         </ul>
         <h3>Deleting your data</h3>
@@ -438,7 +440,7 @@ function Privacy() {
           <li>Fares estimated from the LTFRB jeepney fare matrix.</li>
           <li>Route traced from the project team’s description of the actual jeepney route.</li>
         </ul>
-        <p className="fineprint">Services used: Supabase (accounts, database and photo storage).</p>
+        <p className="fineprint">Services used: Supabase (accounts, database and photo storage), FOSSGIS OpenStreetMap routing (walking directions), Google Gemini (Ask AI), Vercel (website).</p>
       </div>
     </div>
   );
