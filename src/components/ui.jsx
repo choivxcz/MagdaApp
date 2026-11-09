@@ -1,4 +1,5 @@
 // Shared layout pieces: page titles, menu rows, bottom navigation.
+import { useEffect, useState } from 'react';
 import Icon from './Icon.jsx';
 
 export function navigate(path) {
@@ -88,5 +89,22 @@ export function Segmented({ options, value, onChange, small }) {
         </button>
       ))}
     </div>
+  );
+}
+
+// Round profile picture. Shows the first letter of the name (or a person
+// icon) when there is no photo or it fails to load.
+export function Avatar({ url, name, size = 48, className = '' }) {
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [url]);
+  const style = { width: size, height: size, fontSize: Math.round(size * 0.42) };
+  if (url && !broken) {
+    return <img className={`avatar photo ${className}`} src={url} alt="" style={style} onError={() => setBroken(true)} />;
+  }
+  const letter = name?.trim().slice(0, 1).toUpperCase();
+  return (
+    <span className={`avatar ${className}`} style={style} aria-hidden="true">
+      {letter || <Icon name="user" size={Math.round(size * 0.46)} />}
+    </span>
   );
 }

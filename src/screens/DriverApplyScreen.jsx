@@ -13,7 +13,7 @@ const STATUS = {
 };
 
 export default function DriverApplyScreen() {
-  const { user, profile, driverRecord, reload } = useAuth();
+  const { user, profile, driverRecord, photos, reload } = useAuth();
   const [form, setForm] = useState({ fullName: '', plate: '', seats: '20', phone: '', licenseNo: '', franchiseNo: '' });
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -58,7 +58,7 @@ export default function DriverApplyScreen() {
 
   async function submit(e) {
     e.preventDefault();
-    if (!agree) return setError('Please agree to share your jeepney’s location during trips.');
+    if (!agree) return setError('Please tick the box to agree first.');
     setBusy(true);
     setError('');
     try {
@@ -98,10 +98,13 @@ export default function DriverApplyScreen() {
             <div className="kv"><span>Plate</span><b>{driverRecord.plate}</b></div>
             <div className="kv"><span>Seats</span><b>{driverRecord.seat_capacity}</b></div>
             {driverRecord.phone && <div className="kv"><span>Phone</span><b>{driverRecord.phone}</b></div>}
+            <div className="kv"><span>Photos</span><b>{photos.avatar && photos.jeepney ? 'Added' : photos.avatar || photos.jeepney ? '1 of 2 added' : 'Not yet'}</b></div>
             <div className="row">
               <button className="btn small" onClick={() => reload()}>Check status</button>
               <button className="btn small" onClick={() => setEditing(true)}>Edit application</button>
+              <button className="btn small icon-text" onClick={() => navigate('more/account')}><Icon name="camera" size={15} /> {photos.avatar && photos.jeepney ? 'Change photos' : 'Add photos'}</button>
             </div>
+            {!(photos.avatar && photos.jeepney) && <p className="hint">Add your profile picture and a photo of your jeepney. It helps the admin check your application, and riders see them when they tap your jeepney.</p>}
           </div>
         )}
 
@@ -112,6 +115,7 @@ export default function DriverApplyScreen() {
               <li>Riders see your jeepney on the map and how many seats are free.</li>
               <li>Your location is shared only while you’re on a trip.</li>
               <li>An admin checks every application to keep riders safe.</li>
+              <li>After you apply, add your profile picture and a jeepney photo. Riders see them when they tap your jeepney.</li>
             </ul>
           </div>
         )}
@@ -140,7 +144,7 @@ export default function DriverApplyScreen() {
             </label>
             <label className="check">
               <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-              <span>I agree to share my jeepney’s location and passenger count while I’m on a trip.</span>
+              <span>I agree to share my jeepney’s location and passenger count while I’m on a trip, and that riders can see my name, profile picture and jeepney photo.</span>
             </label>
             {error && <p className="warn">{error}</p>}
             <button className="btn primary wide" disabled={busy}>

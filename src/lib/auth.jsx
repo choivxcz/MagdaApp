@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { supabase, isDemo } from './supabase.js';
 import { fetchProfile, fetchIsAdmin } from './account.js';
 import { fetchDriverProfile } from './locations.js';
+import { fetchMyPhotos } from './photos.js';
 import { setPrefs } from './prefs.js';
 import { isNative, listenForAuthLinks } from './authLinks.js';
 
@@ -36,6 +37,7 @@ export function AuthProvider({ children }) {
   const [driver, setDriver] = useState(null); // approved drivers only
   const [driverRecord, setDriverRecord] = useState(null); // any status: pending, rejected...
   const [isAdmin, setIsAdmin] = useState(false);
+  const [photos, setPhotos] = useState({ avatar: null, jeepney: null });
   const [recovery, setRecovery] = useState(false);
   const [notice, setNotice] = useState(null);
 
@@ -73,14 +75,16 @@ export function AuthProvider({ children }) {
       setDriver(null);
       setDriverRecord(null);
       setIsAdmin(false);
+      setPhotos({ avatar: null, jeepney: null });
       return;
     }
     // A failed check (e.g. weak signal) keeps what we had, so an active
     // trip is never stopped by a network hiccup.
-    const [p, d, admin] = await Promise.all([
+    const [p, d, admin, ph] = await Promise.all([
       fetchProfile(userId).catch(() => undefined),
       fetchDriverProfile(userId).catch(() => undefined),
       fetchIsAdmin(userId).catch(() => undefined),
+      fetchMyPhotos(userId).catch(() => undefined),
     ]);
     if (p !== undefined) setProfile(p);
     if (d !== undefined) {
@@ -88,6 +92,7 @@ export function AuthProvider({ children }) {
       setDriver(d?.approved ? d : null);
     }
     if (admin !== undefined) setIsAdmin(admin);
+    if (ph !== undefined) setPhotos(ph);
     if (p?.fare_type) setPrefs({ fareType: p.fare_type });
   }, [userId]);
 
@@ -108,6 +113,7 @@ export function AuthProvider({ children }) {
     driver,
     driverRecord,
     isAdmin,
+    photos,
     reload,
     recovery,
     finishRecovery: () => setRecovery(false),

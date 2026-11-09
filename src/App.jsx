@@ -89,7 +89,7 @@ function Shell() {
       <main className="content">
         {/* Map and Drive stay mounted so the map and an active trip survive tab switches. */}
         <div className="screen" hidden={current !== 'map'}>
-          <MapScreen route={route} jeepneys={live.jeepneys} error={live.error} request={mapRequest} visible={current === 'map'} />
+          <MapScreen route={route} jeepneys={live.jeepneys} error={live.error} request={mapRequest} visible={current === 'map'} onRequest={openOnMap} />
         </div>
         {driver && user && (
           <div className="screen" hidden={current !== 'drive'}>

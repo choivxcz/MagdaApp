@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { PageHeader, MenuGroup, MenuRow, Segmented, navigate } from '../components/ui.jsx';
+import { PageHeader, MenuGroup, MenuRow, Segmented, Avatar, navigate } from '../components/ui.jsx';
+import PhotoField from '../components/PhotoField.jsx';
 import Icon from '../components/Icon.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { usePrefs, setPrefs } from '../lib/prefs.js';
@@ -11,7 +12,7 @@ import { DIRECTIONS, DIRECTION_KEYS } from '../lib/directions.js';
 import DriverApplyScreen from './DriverApplyScreen.jsx';
 import AdminScreen from './AdminScreen.jsx';
 
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '0.5.0';
 
 export default function MoreScreen({ route, sub }) {
   switch (sub) {
@@ -28,7 +29,7 @@ export default function MoreScreen({ route, sub }) {
 }
 
 function MoreMenu() {
-  const { user, profile, driver, driverRecord, isAdmin } = useAuth();
+  const { user, profile, driver, driverRecord, isAdmin, photos } = useAuth();
   const prefs = usePrefs();
   const driverStatus = driverRecord?.status;
 
@@ -49,7 +50,7 @@ function MoreMenu() {
       <div className="page-body">
         {user ? (
           <button className="profile-card" onClick={() => navigate('more/account')}>
-            <span className="avatar">{(profile?.full_name || user.email || '?').slice(0, 1).toUpperCase()}</span>
+            <Avatar url={photos.avatar} name={profile?.full_name || user.email} />
             <span className="profile-text">
               <b>{profile?.full_name || 'Commuter'}</b>
               <span className="sub">{user.email}</span>
@@ -113,7 +114,7 @@ function MoreMenu() {
 
         {user && (
           <MenuGroup title="Account">
-            <MenuRow icon="user" title="Account & data" sub="Name, delete account" onClick={() => navigate('more/account')} />
+            <MenuRow icon="user" title="Account & data" sub="Photo, name, delete account" onClick={() => navigate('more/account')} />
             <MenuRow icon="logout" title="Sign out" onClick={signOut} right={<span />} />
           </MenuGroup>
         )}
@@ -316,7 +317,7 @@ function ReportRide() {
 }
 
 function Account() {
-  const { user, profile, reload } = useAuth();
+  const { user, profile, driverRecord, photos, reload } = useAuth();
   const [name, setName] = useState(profile?.full_name ?? '');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
@@ -340,10 +341,10 @@ function Account() {
   }
 
   async function removeAccount() {
-    if (!window.confirm('Delete your account? Your profile and saved trips will be permanently deleted. This cannot be undone.')) return;
+    if (!window.confirm('Delete your account? Your profile, photos and saved trips will be permanently deleted. This cannot be undone.')) return;
     setBusy(true);
     try {
-      await deleteMyAccount();
+      await deleteMyAccount(user.id);
       setPrefs({ guest: false });
       navigate('map');
     } catch (err) {
@@ -356,6 +357,20 @@ function Account() {
     <div className="page">
       <PageHeader title="Account & data" back="more" />
       <div className="page-body">
+        <div className="card photos-card">
+          <PhotoField
+            kind="avatar" userId={user.id} url={photos.avatar} name={profile?.full_name || user.email} onChanged={reload}
+            title="Profile picture"
+            sub={driverRecord ? 'Riders see this when they tap your jeepney on the map.' : 'Shown on your account.'}
+          />
+          {driverRecord && (
+            <PhotoField
+              kind="jeepney" userId={user.id} url={photos.jeepney} onChanged={reload}
+              title="Jeepney photo"
+              sub="Riders see this when they tap your jeepney. Take it from the front or side so the colors and plate are clear."
+            />
+          )}
+        </div>
         <form className="card form" onSubmit={saveName}>
           <label className="field"><span className="label">Email</span><input value={user.email} disabled /></label>
           <label className="field"><span className="label">Full name</span>
@@ -365,7 +380,7 @@ function Account() {
           {msg && <p className="hint">{msg}</p>}
         </form>
         <MenuGroup title="Danger zone">
-          <MenuRow icon="trash" danger title={busy ? 'Deleting…' : 'Delete account'} sub="Permanently delete your account, profile and saved trips"
+          <MenuRow icon="trash" danger title={busy ? 'Deleting…' : 'Delete account'} sub="Permanently delete your account, profile, photos and saved trips"
             onClick={removeAccount} />
         </MenuGroup>
       </div>
@@ -405,9 +420,10 @@ function Privacy() {
         <h3>What we store</h3>
         <ul>
           <li><b>Account:</b> your email, name and fare type, so you can sign in and keep settings.</li>
+          <li><b>Photos (optional):</b> your profile picture, and for drivers a photo of the jeepney. A commuter’s photo is only shown to them. For approved drivers, riders who tap the jeepney on the map see the driver’s name, profile picture and jeepney photo.</li>
           <li><b>Saved trips:</b> the stops you saved. Only you can see them.</li>
           <li><b>Ride reports:</b> what you report, linked to your account so we can follow up.</li>
-          <li><b>Drivers only:</b> the jeepney’s location and passenger count during a trip. Only the latest position is kept; it is hidden when the trip ends.</li>
+          <li><b>Drivers only:</b> the jeepney’s location and passenger count during a trip. Only the latest position is kept; it is hidden when the trip ends. Phone, license and franchise numbers are seen only by the admin.</li>
         </ul>
         <h3>What we don’t do</h3>
         <ul>
@@ -415,14 +431,14 @@ function Privacy() {
           <li>We don’t sell your data or show ads.</li>
         </ul>
         <h3>Deleting your data</h3>
-        <p>More → Account & data → Delete account removes your account, profile and saved trips.</p>
+        <p>More → Account & data → Delete account removes your account, profile, photos and saved trips. You can also remove a photo there at any time.</p>
         <h3>Data sources</h3>
         <ul>
           <li>Map data © OpenStreetMap contributors, map tiles by OpenFreeMap.</li>
           <li>Fares estimated from the LTFRB jeepney fare matrix.</li>
           <li>Route traced from the project team’s description of the actual jeepney route.</li>
         </ul>
-        <p className="fineprint">Services used: Supabase (accounts and database).</p>
+        <p className="fineprint">Services used: Supabase (accounts, database and photo storage).</p>
       </div>
     </div>
   );

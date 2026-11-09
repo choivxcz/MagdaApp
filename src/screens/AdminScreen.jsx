@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { PageHeader, Segmented } from '../components/ui.jsx';
+import { PageHeader, Segmented, Avatar } from '../components/ui.jsx';
+import { photoUrl } from '../lib/photos.js';
 import Icon from '../components/Icon.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { adminListDrivers, adminReviewDriver, adminListReports, adminSetReportStatus } from '../lib/account.js';
@@ -94,10 +95,13 @@ function Drivers({ onChange }) {
       ) : shown.length === 0 ? (
         <p className="hint center">{filter === 'pending' ? 'No applications waiting. 🎉' : 'Nobody here.'}</p>
       ) : (
-        shown.map((d) => (
+        shown.map((d) => {
+          const avatar = photoUrl(d.user_id, 'avatar', d.avatar_v);
+          const jeepney = photoUrl(d.user_id, 'jeepney', d.jeepney_v);
+          return (
           <div key={d.user_id} className="card admin-card">
             <div className="admin-card-head">
-              <span className="tile"><Icon name="bus" size={20} /></span>
+              {avatar ? <a href={avatar} target="_blank" rel="noreferrer"><Avatar url={avatar} name={d.full_name} size={44} /></a> : <Avatar name={d.full_name} size={44} />}
               <div className="admin-card-title">
                 <b>{d.full_name}</b>
                 <span className="sub">{d.email}</span>
@@ -112,6 +116,11 @@ function Drivers({ onChange }) {
               <span><small>Franchise no.</small><b>{d.franchise_no || '—'}</b></span>
               <span><small>Applied</small><b>{when(d.applied_at)}</b></span>
             </div>
+            {jeepney ? (
+              <a className="admin-jeep-photo" href={jeepney} target="_blank" rel="noreferrer"><img src={jeepney} alt={`Jeepney ${d.plate}`} loading="lazy" /></a>
+            ) : (
+              <p className="hint">{avatar ? 'No jeepney photo yet.' : 'No photos yet.'}</p>
+            )}
             {d.review_note && <p className="hint">Note: “{d.review_note}”</p>}
             <div className="admin-actions">
               {d.status !== 'approved' && (
@@ -125,7 +134,8 @@ function Drivers({ onChange }) {
               )}
             </div>
           </div>
-        ))
+          );
+        })
       )}
     </>
   );

@@ -22,6 +22,8 @@ try {
      where n.nspname = 'public' and c.relname in ('drivers', 'jeepney_locations')
      order by 1`);
   for (const r of rows) console.log(`  ✓ ${r.table} (row level security: ${r.rls ? 'on' : 'OFF'})`);
+  const bucket = await client.query("select public from storage.buckets where id = 'photos'");
+  console.log(bucket.rows.length ? '  ✓ photos storage (profile and jeepney pictures)' : '  ✗ photos storage is missing');
   console.log('Database is ready.');
 } catch (e) {
   console.error('\nSetup failed:', e.message);

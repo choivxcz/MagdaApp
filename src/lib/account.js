@@ -1,5 +1,6 @@
 // Commuter account data: profile, saved trips, ride reports.
 import { supabase } from './supabase.js';
+import { removeAllMyPhotos } from './photos.js';
 
 function must({ data, error }) {
   if (error) throw error;
@@ -40,7 +41,9 @@ export async function listMyReports() {
   return must(await supabase.from('ride_reports').select('*').order('created_at', { ascending: false }).limit(20));
 }
 
-export async function deleteMyAccount() {
+export async function deleteMyAccount(userId) {
+  // Photos are files, not table rows, so remove them first.
+  await removeAllMyPhotos(userId).catch(() => {});
   must(await supabase.rpc('delete_my_account'));
   // The account is gone on the server, so only clear this phone's session.
   await supabase.auth.signOut({ scope: 'local' });

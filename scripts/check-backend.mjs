@@ -52,6 +52,22 @@ try {
   r = await driver.from('jeepney_locations').upsert({ driver_id: userId, ...location() }, { onConflict: 'driver_id' });
   check(!!r.error, 'Unapproved driver cannot share location');
 
+  // Photos: each user may only upload their own avatar.jpg / jeepney.jpg.
+  const photo = () => new Blob([Uint8Array.from([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' });
+  const up = (path) => driver.storage.from('photos').upload(path, photo(), { upsert: true, contentType: 'image/jpeg' });
+  r = await up(`${userId}/avatar.jpg`);
+  check(!r.error, 'User can upload a profile picture', r.error?.message);
+  r = await up(`${userId}/avatar.jpg`);
+  check(!r.error, 'User can replace their profile picture', r.error?.message);
+  r = await up(`${userId}/jeepney.jpg`);
+  check(!r.error, 'Driver can upload a jeepney photo', r.error?.message);
+  r = await up(`${crypto.randomUUID()}/avatar.jpg`);
+  check(!!r.error, "User cannot upload someone else's photo");
+  r = await up(`${userId}/other.jpg`);
+  check(!!r.error, 'Only the two photo names are allowed');
+  r = await anon.rpc('driver_card', { p_driver_id: userId }).maybeSingle();
+  check(!r.error && !r.data, 'Unapproved drivers have no public card', r.error?.message ?? JSON.stringify(r.data));
+
   // Approve, then share a position with a fake plate and too many seats.
   await admin.from('drivers').update({ approved: true }).eq('user_id', userId);
   r = await driver.from('jeepney_locations').upsert(
@@ -69,6 +85,14 @@ try {
     check(Math.abs(Date.parse(r.data.updated_at) - Date.now()) < 60000, 'Server sets the update time');
   }
 
+  // Riders (not signed in) see the driver's card and photos.
+  r = await anon.rpc('driver_card', { p_driver_id: userId }).maybeSingle();
+  check(!r.error && r.data?.plate === 'TEST 001' && r.data.avatar_v > 0 && r.data.jeepney_v > 0,
+    'Riders see the driver card with both photos', r.error?.message ?? JSON.stringify(r.data));
+  check(r.data && !('phone' in r.data) && !('license_no' in r.data), 'Driver card hides phone and license');
+  const res = await fetch(anon.storage.from('photos').getPublicUrl(`${userId}/jeepney.jpg`).data.publicUrl);
+  check(res.ok, 'Photos load from their public link', `HTTP ${res.status}`);
+
   // A driver cannot move someone else's jeepney.
   r = await driver.from('jeepney_locations').upsert({ driver_id: crypto.randomUUID(), ...location() }, { onConflict: 'driver_id' });
   check(!!r.error, "Driver cannot post as another jeepney");
@@ -81,7 +105,10 @@ try {
   console.error('\nCheck stopped:', e.message);
   if (/schema cache|does not exist/i.test(e.message)) console.error('Run "npm run setup:db" first.');
 } finally {
-  if (userId) await admin.auth.admin.deleteUser(userId).catch(() => {});
+  if (userId) {
+    await admin.storage.from('photos').remove([`${userId}/avatar.jpg`, `${userId}/jeepney.jpg`]).catch(() => {});
+    await admin.auth.admin.deleteUser(userId).catch(() => {});
+  }
   console.log(failures ? `\n${failures} check(s) failed.` : '\nAll checks passed. The backend is working.');
   process.exitCode = failures ? 1 : 0;
 }

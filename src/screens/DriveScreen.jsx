@@ -3,6 +3,8 @@ import MapView, { MapButtons } from '../components/MapView.jsx';
 import { sendLocation, endTrip } from '../lib/locations.js';
 import { projectOnRoute } from '../lib/geo.js';
 import { DIRECTIONS, DIRECTION_KEYS } from '../lib/directions.js';
+import { useAuth } from '../lib/auth.jsx';
+import { Avatar, navigate } from '../components/ui.jsx';
 
 const SEND_EVERY_MS = 10000; // one GPS update every 10 s keeps data use low
 const SEAT_SEND_DELAY_MS = 800; // wait for a burst of taps, then send once
@@ -40,6 +42,7 @@ export default function DriveScreen({ route, userId, driver, visible, onTripChan
   const [me, setMe] = useState(null);
   const [status, setStatus] = useState('');
   const [map, setMap] = useState(null);
+  const { photos } = useAuth();
   const mapRef = useRef(null);
   const centered = useRef(false);
 
@@ -148,9 +151,12 @@ export default function DriveScreen({ route, userId, driver, visible, onTripChan
       </div>
       <section className="bottom-sheet drive-sheet">
         <div className="row spread">
-          <div>
-            <div className="label">{driver.full_name}</div>
-            <div className="big">{driver.plate}</div>
+          <div className="drive-who">
+            <Avatar url={photos.avatar} name={driver.full_name} size={46} />
+            <div>
+              <div className="label">{driver.full_name}</div>
+              <div className="big">{driver.plate}</div>
+            </div>
           </div>
           <span className={`status-pill ${onTrip ? 'live' : ''}`}>{onTrip ? '● On trip' : 'Off duty'}</span>
         </div>
@@ -171,6 +177,12 @@ export default function DriveScreen({ route, userId, driver, visible, onTripChan
           <button className="btn primary big-btn" onClick={start}>▶ Start trip</button>
         )}
         {status && <p className="hint">{status}</p>}
+        {(!photos.avatar || !photos.jeepney) && (
+          <p className="hint">
+            Riders see your {!photos.avatar && !photos.jeepney ? 'photo and jeepney photo' : !photos.avatar ? 'profile picture' : 'jeepney photo'} when they tap your jeepney.{' '}
+            <button className="link-btn small" onClick={() => navigate('more/account')}>Add {!photos.avatar && !photos.jeepney ? 'photos' : 'photo'}</button>
+          </p>
+        )}
         <p className="fineprint">
           Keep the app open while driving. Direction switches by itself at each terminal.
           Let the konduktor or a passenger tap the seat buttons, not the driver while moving.

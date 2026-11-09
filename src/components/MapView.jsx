@@ -22,18 +22,31 @@ function makeEl(className, text) {
 function fillJeepMarker(el, j) {
   const dir = DIRECTIONS[j.direction] ?? DIRECTIONS.to_santa_cruz;
   const seats = seatStatus(j);
-  el.className = `jeep-marker ${dir.className}`;
-  const icon = makeEl('jeep-icon');
-  icon.innerHTML = JEEP_SVG;
-  const label = makeEl('jeep-label');
-  label.append(makeEl('jeep-plate', j.plate));
-  if (seats.level !== 'unknown') label.append(makeEl(`jeep-seats seats-${seats.level}`, seats.level === 'full' ? 'Full' : `${seats.free}`));
-  el.replaceChildren(icon, label);
+  // classList keeps MapLibre's own marker classes.
+  el.classList.remove(...Object.values(DIRECTIONS).map((d) => d.className));
+  el.classList.add('jeep-marker', dir.className);
+  el.setAttribute('role', 'button');
+  el.setAttribute('aria-label', `Jeepney ${j.plate}, see driver`);
+  // Build the parts once and only update their text afterwards. Replacing
+  // them on every refresh would swallow a tap that lands mid-refresh.
+  if (!el.firstChild) {
+    const icon = makeEl('jeep-icon');
+    icon.innerHTML = JEEP_SVG;
+    const label = makeEl('jeep-label');
+    label.append(makeEl('jeep-plate'), makeEl('jeep-seats'));
+    el.append(icon, label);
+  }
+  const [plateEl, seatsEl] = el.lastChild.children;
+  plateEl.textContent = j.plate;
+  seatsEl.hidden = seats.level === 'unknown';
+  seatsEl.className = `jeep-seats seats-${seats.level}`;
+  seatsEl.textContent = seats.level === 'full' ? 'Full' : `${seats.free}`;
 }
 
 // Shows the route, stops, jeepneys, the rider's pickup and the phone's own position.
 // onReady(map) hands the map to the screen so it can add its own buttons.
-export default function MapView({ route, jeepneys = [], pickup, me, onPick, activeDirection, visible = true, padding, onReady }) {
+// onJeepTap(id) runs when a jeepney marker is tapped.
+export default function MapView({ route, jeepneys = [], pickup, me, onPick, onJeepTap, activeDirection, visible = true, padding, onReady }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const jeepMarkers = useRef(new Map());
@@ -41,6 +54,8 @@ export default function MapView({ route, jeepneys = [], pickup, me, onPick, acti
   const meMarker = useRef(null);
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
+  const onJeepTapRef = useRef(onJeepTap);
+  onJeepTapRef.current = onJeepTap;
   const activeRef = useRef(activeDirection);
   activeRef.current = activeDirection;
   const paddingRef = useRef(padding);
@@ -91,7 +106,11 @@ export default function MapView({ route, jeepneys = [], pickup, me, onPick, acti
         .addTo(map);
     }
 
-    map.on('click', (e) => onPickRef.current?.([e.lngLat.lng, e.lngLat.lat]));
+    map.on('click', (e) => {
+      // A tap on a jeepney opens its driver, it doesn't move the pickup pin.
+      if (e.originalEvent?.target?.closest?.('.jeep-marker')) return;
+      onPickRef.current?.([e.lngLat.lng, e.lngLat.lat]);
+    });
     // A map built inside a hidden tab has no size yet; fit it when first shown.
     fitted.current = containerRef.current.clientHeight > 0;
     mapRef.current = map;
@@ -144,7 +163,12 @@ export default function MapView({ route, jeepneys = [], pickup, me, onPick, acti
       seen.add(j.id);
       let marker = jeepMarkers.current.get(j.id);
       if (!marker) {
-        marker = new maplibregl.Marker({ element: makeEl('jeep-marker') }).setLngLat([j.lng, j.lat]).addTo(map);
+        const el = makeEl('jeep-marker');
+        const id = j.id;
+        el.tabIndex = 0;
+        el.addEventListener('click', () => onJeepTapRef.current?.(id));
+        el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') onJeepTapRef.current?.(id); });
+        marker = new maplibregl.Marker({ element: el }).setLngLat([j.lng, j.lat]).addTo(map);
         jeepMarkers.current.set(j.id, marker);
       } else {
         marker.setLngLat([j.lng, j.lat]);

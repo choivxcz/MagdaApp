@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import MapView, { MapButtons } from '../components/MapView.jsx';
 import Icon from '../components/Icon.jsx';
 import { projectOnRoute } from '../lib/geo.js';
@@ -9,6 +9,9 @@ import { useAuth } from '../lib/auth.jsx';
 import { saveTrip } from '../lib/account.js';
 import { isDemo } from '../lib/supabase.js';
 import InstallHint from '../components/InstallHint.jsx';
+import DriverSheet from '../components/DriverSheet.jsx';
+import AssistantSheet, { GREETING } from '../components/AssistantSheet.jsx';
+import { askAssistant } from '../lib/assistant/client.js';
 
 const AVG_SPEED_MPS = 20 / 3.6; // jeepneys average ~20 km/h with stops
 const MAX_OFF_ROUTE_M = 300; // pickup must be this close to the route
@@ -30,15 +33,18 @@ export function SeatChip({ jeep }) {
   return <span className={`seat-chip seats-${s.level}`}>{s.level === 'unknown' ? '—' : s.text}</span>;
 }
 
-function JeepRow({ j, detail }) {
+function JeepRow({ j, detail, onOpen }) {
   return (
-    <li className="jeep-row">
-      <span className={`jeep-avatar ${DIRECTIONS[j.direction]?.className}`}><Icon name="bus" size={18} /></span>
-      <span className="jeep-row-text">
-        <span className="jeep-row-title"><b>{j.plate}</b><DirBadge direction={j.direction} /></span>
-        <span className="sub">{detail ?? agoText(j.updatedAt)}</span>
-      </span>
-      <SeatChip jeep={j} />
+    <li>
+      <button className="jeep-row" onClick={() => onOpen(j.id)} aria-label={`Jeepney ${j.plate}, see driver`}>
+        <span className={`jeep-avatar ${DIRECTIONS[j.direction]?.className}`}><Icon name="bus" size={18} /></span>
+        <span className="jeep-row-text">
+          <span className="jeep-row-title"><b>{j.plate}</b><DirBadge direction={j.direction} /></span>
+          <span className="sub">{detail ?? agoText(j.updatedAt)}</span>
+        </span>
+        <SeatChip jeep={j} />
+        <Icon name="chevron" size={16} className="menu-chevron" />
+      </button>
     </li>
   );
 }
@@ -70,7 +76,7 @@ function resolveTrip(route, fromStopId, fromPoint, toId) {
   return best;
 }
 
-export default function MapScreen({ route, jeepneys, error, request, visible }) {
+export default function MapScreen({ route, jeepneys, error, request, visible, onRequest }) {
   const prefs = usePrefs();
   const { user } = useAuth();
   const [map, setMap] = useState(null);
@@ -82,6 +88,11 @@ export default function MapScreen({ route, jeepneys, error, request, visible }) 
   const [onlyWithSeats, setOnlyWithSeats] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [openJeepId, setOpenJeepId] = useState(null);
+  const closeJeep = useCallback(() => setOpenJeepId(null), []);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chat, setChat] = useState({ messages: [GREETING], busy: false, memory: {} });
+  const closeChat = useCallback(() => setChatOpen(false), []);
 
   const stops = route.stops;
   const stopById = (id) => stops.find((s) => s.id === id);
@@ -163,6 +174,30 @@ export default function MapScreen({ route, jeepneys, error, request, visible }) 
     );
   }
 
+  function showTrip(t) {
+    setChatOpen(false);
+    setExpanded(false);
+    onRequest?.({ direction: t.direction, pickupStopId: t.pickupStopId, dropoffStopId: t.dropoffStopId });
+  }
+
+  async function askAI(question) {
+    const messages = [...chat.messages, { role: 'user', text: question }];
+    setChat((c) => ({ ...c, messages, busy: true }));
+    const answer = await askAssistant({
+      messages: messages.slice(1), // the greeting isn't part of the conversation
+      route, jeepneys, fareType: prefs.fareType, demo: isDemo, memory: chat.memory,
+      mapTrip: { fromId: fromStopId || null, toId: toId || null },
+    });
+    const trips = answer.actions.filter((a) => a.type === 'show_trip');
+    const trip = trips.find((a) => a.auto) ?? trips.at(-1);
+    setChat((c) => ({
+      busy: false,
+      memory: answer.memory,
+      messages: [...c.messages, { role: 'assistant', text: answer.text, source: answer.source, trip: trip && !trip.auto ? trip : null }],
+    }));
+    if (trip?.auto) showTrip(trip);
+  }
+
   async function onSave() {
     if (!user) return setMsg({ kind: 'signin', text: 'Sign in to save trips.' });
     const from = fromStopId
@@ -187,7 +222,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible }) 
   return (
     <div className={`map-screen ${expanded ? 'sheet-expanded' : ''}`}>
       <MapView
-        route={route} jeepneys={shown} pickup={pickupPin} me={me} onPick={pickOnMap}
+        route={route} jeepneys={shown} pickup={pickupPin} me={me} onPick={pickOnMap} onJeepTap={setOpenJeepId}
         activeDirection={activeDirection} visible={visible} onReady={setMap}
         padding={{ top: 170, bottom: expanded ? 420 : 230 }}
       />
@@ -227,7 +262,11 @@ export default function MapScreen({ route, jeepneys, error, request, visible }) 
       </div>
 
       <div className="map-float-right">
-        <MapButtons map={map} onLocate={locateMe} />
+        <MapButtons map={map} onLocate={locateMe}>
+          <button className="ai-fab" onClick={() => setChatOpen(true)} aria-label="Ask Sakay AI">
+            <Icon name="sparkle" size={18} /> Ask AI
+          </button>
+        </MapButtons>
       </div>
 
       <section className={`bottom-sheet ${expanded ? 'expanded' : ''}`} aria-label="Trip details">
@@ -297,7 +336,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible }) 
         {list.length ? (
           <ul className="jeep-list">
             {list.map((j) => (
-              <JeepRow key={j.id} j={j} detail={j.gap != null ? `${j.gap <= 100 ? 'Arriving now' : `~${minutes(j.gap)} min · ${(j.gap / 1000).toFixed(1)} km away`} · ${agoText(j.updatedAt)}` : undefined} />
+              <JeepRow key={j.id} j={j} onOpen={setOpenJeepId} detail={j.gap != null ? `${j.gap <= 100 ? 'Arriving now' : `~${minutes(j.gap)} min · ${(j.gap / 1000).toFixed(1)} km away`} · ${agoText(j.updatedAt)}` : undefined} />
             ))}
           </ul>
         ) : (
@@ -307,8 +346,14 @@ export default function MapScreen({ route, jeepneys, error, request, visible }) 
         <div className="legend-row">
           {DIRECTION_KEYS.map((d) => <span key={d}><i style={{ background: DIRECTIONS[d].color }} />{DIRECTIONS[d].label}</span>)}
         </div>
-        <p className="fineprint">Times, seats and fares are estimates. Not affiliated with LTFRB or any LGU.</p>
+        <p className="fineprint">Tap a jeepney to see its driver. Times, seats and fares are estimates. Not affiliated with LTFRB or any LGU.</p>
       </section>
+
+      {openJeepId && (
+        <DriverSheet jeepId={openJeepId} jeep={jeepneys.find((j) => j.id === openJeepId) ?? null} onClose={closeJeep} />
+      )}
+
+      {chatOpen && <AssistantSheet chat={chat} onSend={askAI} onShowTrip={showTrip} onClose={closeChat} />}
     </div>
   );
 }

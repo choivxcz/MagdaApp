@@ -336,11 +336,14 @@ $$;
 revoke all on function public.apply_as_driver(text, text, int, text, text, text) from public, anon;
 grant execute on function public.apply_as_driver(text, text, int, text, text, text) to authenticated;
 
--- Admin: list every driver and applicant, with their email.
-create or replace function public.admin_list_drivers()
+-- Admin: list every driver and applicant, with their email and photo versions.
+-- (Dropped first because its columns changed; photo_version is in section 7.)
+drop function if exists public.admin_list_drivers();
+create function public.admin_list_drivers()
 returns table (
   user_id uuid, email text, full_name text, plate text, seat_capacity int, phone text,
-  license_no text, franchise_no text, status text, review_note text, applied_at timestamptz, reviewed_at timestamptz
+  license_no text, franchise_no text, status text, review_note text, applied_at timestamptz, reviewed_at timestamptz,
+  avatar_v bigint, jeepney_v bigint
 )
 language plpgsql
 stable
@@ -351,7 +354,8 @@ begin
   if not public.is_admin() then raise exception 'Admins only.'; end if;
   return query
     select d.user_id, u.email::text, d.full_name, d.plate, d.seat_capacity, d.phone,
-           d.license_no, d.franchise_no, d.status, d.review_note, d.applied_at, d.reviewed_at
+           d.license_no, d.franchise_no, d.status, d.review_note, d.applied_at, d.reviewed_at,
+           public.photo_version(d.user_id, 'avatar'), public.photo_version(d.user_id, 'jeepney')
       from public.drivers d join auth.users u on u.id = d.user_id
      order by (d.status = 'pending') desc, d.applied_at desc;
 end;
@@ -400,3 +404,96 @@ end;
 $$;
 revoke all on function public.admin_set_report_status(uuid, text) from public, anon;
 grant execute on function public.admin_set_report_status(uuid, text) to authenticated;
+
+-- =====================================================================
+-- 7. Photos: a profile picture for every account, and a jeepney photo
+--    for drivers. Riders see a driver's photos when they tap the jeepney.
+--    Files live in one public bucket as <user id>/avatar.jpg and
+--    <user id>/jeepney.jpg. The app shrinks photos before uploading,
+--    so each one is only about 100-300 KB.
+-- =====================================================================
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('photos', 'photos', true, 2097152, array['image/jpeg'])
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+-- A user may only touch their own two files. Jeepney photos are for
+-- drivers and applicants only.
+create or replace function public.is_own_photo(p_name text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select (select auth.uid()) is not null and (
+    p_name = (select auth.uid())::text || '/avatar.jpg'
+    or (p_name = (select auth.uid())::text || '/jeepney.jpg'
+        and exists (select 1 from public.drivers where user_id = (select auth.uid())))
+  );
+$$;
+grant execute on function public.is_own_photo(text) to authenticated;
+
+drop policy if exists "own photos read" on storage.objects;
+create policy "own photos read" on storage.objects
+  for select to authenticated using (bucket_id = 'photos' and public.is_own_photo(name));
+drop policy if exists "own photos upload" on storage.objects;
+create policy "own photos upload" on storage.objects
+  for insert to authenticated with check (bucket_id = 'photos' and public.is_own_photo(name));
+drop policy if exists "own photos replace" on storage.objects;
+create policy "own photos replace" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'photos' and public.is_own_photo(name))
+  with check (bucket_id = 'photos' and public.is_own_photo(name));
+drop policy if exists "own photos delete" on storage.objects;
+create policy "own photos delete" on storage.objects
+  for delete to authenticated using (bucket_id = 'photos' and public.is_own_photo(name));
+
+-- When a photo was last changed (milliseconds), or null if there is none.
+-- The app adds this to the photo link so phones load the new picture.
+create or replace function public.photo_version(p_user_id uuid, p_kind text)
+returns bigint
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select (extract(epoch from o.updated_at) * 1000)::bigint
+    from storage.objects o
+   where o.bucket_id = 'photos' and o.name = p_user_id::text || '/' || p_kind || '.jpg';
+$$;
+revoke all on function public.photo_version(uuid, text) from public, anon, authenticated;
+
+-- The signed-in user's own photos.
+create or replace function public.my_photos()
+returns table (avatar_v bigint, jeepney_v bigint)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select public.photo_version(auth.uid(), 'avatar'), public.photo_version(auth.uid(), 'jeepney')
+   where auth.uid() is not null;
+$$;
+revoke all on function public.my_photos() from public, anon;
+grant execute on function public.my_photos() to authenticated;
+
+-- What a rider sees after tapping a jeepney. Approved drivers only, and
+-- only these few fields (no email, phone or license number).
+create or replace function public.driver_card(p_driver_id uuid)
+returns table (full_name text, plate text, seat_capacity int, avatar_v bigint, jeepney_v bigint)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select d.full_name, d.plate, d.seat_capacity,
+         public.photo_version(d.user_id, 'avatar'), public.photo_version(d.user_id, 'jeepney')
+    from public.drivers d
+   where d.user_id = p_driver_id and d.status = 'approved';
+$$;
+revoke all on function public.driver_card(uuid) from public;
+grant execute on function public.driver_card(uuid) to anon, authenticated;

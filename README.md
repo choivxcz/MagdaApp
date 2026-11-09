@@ -98,6 +98,33 @@ npm run driver:add -- --email juan@example.com --password "secret123" --name "Ju
 npm run driver:add -- --email juan@example.com --disable
 ```
 
+## Sakay AI (chat assistant, free)
+
+The **Ask AI** button on the map opens a chat. Riders can ask in English,
+Tagalog or Taglish: "Magkano Magdalena papuntang Santa Cruz?", "May jeep ba
+ngayon?", "Kailan darating ang jeep sa Capitol?", "Show DLTB to Biñan on the
+map". The AI looks up fares, arrival times and seats with the same code as
+the map, so its numbers always match.
+
+- **With a Gemini key** (free tier): Google Gemini understands the question
+  and replies naturally. Runs in `api/assistant.js` on Vercel, so the key
+  stays secret. If Gemini 2.5 Flash is busy or over its free daily limit, it
+  tries Flash-Lite.
+- **Without a key, offline, or over the limit**: the app answers common
+  questions by itself (`src/lib/assistant/offline.js`), marked "offline answer".
+
+Turn on the AI:
+
+1. Get a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+   (sign in with Google → **Create API key**). No credit card needed.
+2. For `npm run dev`: add `GEMINI_API_KEY=...` to `.env.local`.
+3. For the website and Android app: `npx vercel env add GEMINI_API_KEY production`,
+   paste the key, then `npm run deploy:web`.
+
+Never put `VITE_` in front of it: that would ship the key inside the app.
+Google may use free-tier prompts to improve its products, so the app tells
+riders not to type personal details.
+
 ## Website (iPhone and computers)
 
 Live at **https://sakay-laguna.vercel.app** (free Vercel hosting). iPhone users
