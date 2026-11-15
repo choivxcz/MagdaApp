@@ -46,18 +46,20 @@ function fillJeepMarker(el, j) {
 // Shows the route, stops, jeepneys, the rider's pickup and the phone's own position.
 // onReady(map) hands the map to the screen so it can add its own buttons.
 // onJeepTap(id) runs when a jeepney marker is tapped.
-// The rider's own path, drawn in violet on top of everything: walking to the
-// sakayan (dotted) and riding to the babaan (solid).
+// The rider's own journey, drawn in violet on top of everything: walking
+// (dotted), jeepney rides (solid) and tricycle rides (dashed amber).
 export const GUIDE_COLOR = '#7c3aed';
+export const TRIKE_COLOR = '#d97706';
 const EMPTY = { type: 'FeatureCollection', features: [] };
-const lineData = (coords) => (coords?.length > 1
-  ? { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }
-  : EMPTY);
+const linesData = (list) => ({
+  type: 'FeatureCollection',
+  features: (list ?? []).filter((c) => c?.length > 1).map((coordinates) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates } })),
+});
 
 // Keep the map on the Magdalena – Santa Cruz route: the middle of what you
 // see must stay within the route area plus room to walk to a sakayan, and
 // you can't zoom out much past the view that fits the whole route.
-const LIMIT_MARGIN_KM = 1.5;
+const LIMIT_MARGIN_KM = 4; // tricycles reach places a few km off the route
 const EXTRA_ZOOM_OUT = 0.15;
 
 function centerBox(route) {
@@ -110,13 +112,16 @@ function keepOnRoute(map, route) {
   if (lng !== c.lng || lat !== c.lat) map.setCenter([lng, lat]);
 }
 
-// guide: { walk, ride, board, alight } (coordinate lists / points, any may be null)
+// guide: { walks, rides, trikes: [coordinate lists], markers: [{ kind, point, label }] }
+//   kind is 'board' (sakayan), 'alight' (babaan) or 'transfer'.
+// dest: the rider's destination point (red pin).
 // waiting: [{ point, people, dim }] passengers waiting for a ride (driver view).
-export default function MapView({ route, jeepneys = [], pickup, me, guide, waiting, onPick, onJeepTap, activeDirection, visible = true, padding, onReady }) {
+export default function MapView({ route, jeepneys = [], pickup, dest, me, guide, waiting, onPick, onJeepTap, activeDirection, visible = true, padding, onReady }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const jeepMarkers = useRef(new Map());
   const pickupMarker = useRef(null);
+  const destMarker = useRef(null);
   const meMarker = useRef(null);
   const guideMarkers = useRef({});
   const waitingMarkers = useRef([]);
@@ -170,6 +175,9 @@ export default function MapView({ route, jeepneys = [], pickup, me, guide, waiti
       }
       map.addSource('guide-ride', { type: 'geojson', data: EMPTY });
       map.addSource('guide-walk', { type: 'geojson', data: EMPTY });
+      map.addSource('guide-trike', { type: 'geojson', data: EMPTY });
+      map.addLayer({ id: 'guide-trike-casing', type: 'line', source: 'guide-trike', layout, paint: { 'line-color': '#ffffff', 'line-width': 9 } });
+      map.addLayer({ id: 'guide-trike', type: 'line', source: 'guide-trike', layout, paint: { 'line-color': TRIKE_COLOR, 'line-width': 5, 'line-dasharray': [1.6, 1.2] } });
       map.addLayer({ id: 'guide-ride-casing', type: 'line', source: 'guide-ride', layout, paint: { 'line-color': '#ffffff', 'line-width': 11, 'line-offset': 3 } });
       map.addLayer({ id: 'guide-ride', type: 'line', source: 'guide-ride', layout, paint: { 'line-color': GUIDE_COLOR, 'line-width': 7, 'line-offset': 3 } });
       map.addLayer({ id: 'guide-walk-casing', type: 'line', source: 'guide-walk', layout, paint: { 'line-color': '#ffffff', 'line-width': 8 } });
@@ -207,6 +215,7 @@ export default function MapView({ route, jeepneys = [], pickup, me, guide, waiti
       mapRef.current = null;
       jeepMarkers.current.clear();
       pickupMarker.current = null;
+      destMarker.current = null;
       meMarker.current = null;
       guideMarkers.current = {};
       waitingMarkers.current = [];
@@ -247,25 +256,29 @@ export default function MapView({ route, jeepneys = [], pickup, me, guide, waiti
 
   function applyGuide(map, g) {
     if (map.getSource('guide-ride')) {
-      map.getSource('guide-ride').setData(lineData(g?.ride));
-      map.getSource('guide-walk').setData(lineData(g?.walk));
+      map.getSource('guide-ride').setData(linesData(g?.rides));
+      map.getSource('guide-walk').setData(linesData(g?.walks));
+      map.getSource('guide-trike').setData(linesData(g?.trikes));
     }
-    for (const [kind, label] of [['board', 'Sakayan'], ['alight', 'Babaan']]) {
-      const point = g?.[kind];
-      let marker = guideMarkers.current[kind];
-      if (!point) {
-        marker?.remove();
-        delete guideMarkers.current[kind];
-        continue;
-      }
+    // Markers are matched by position in the list, so they move instead of flickering.
+    const wanted = g?.markers ?? [];
+    const have = guideMarkers.current;
+    wanted.forEach((m, i) => {
+      const key = `${i}:${m.kind}:${m.label}`;
+      let marker = have[i];
+      if (marker && marker.key !== key) { marker.remove(); marker = null; }
       if (!marker) {
-        const el = makeEl(`guide-marker ${kind}`);
-        el.append(makeEl('guide-label', label));
-        marker = new maplibregl.Marker({ element: el }).setLngLat(point).addTo(map);
-        guideMarkers.current[kind] = marker;
+        const el = makeEl(`guide-marker ${m.kind}`);
+        el.append(makeEl('guide-label', m.label));
+        marker = new maplibregl.Marker({ element: el }).setLngLat(m.point).addTo(map);
+        marker.key = key;
+        have[i] = marker;
       } else {
-        marker.setLngLat(point);
+        marker.setLngLat(m.point);
       }
+    });
+    for (const i of Object.keys(have)) {
+      if (+i >= wanted.length) { have[i].remove(); delete have[i]; }
     }
   }
   useEffect(() => {
@@ -335,6 +348,23 @@ export default function MapView({ route, jeepneys = [], pickup, me, guide, waiti
       pickupMarker.current.setLngLat(pickup);
     }
   }, [pickup]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!dest) {
+      destMarker.current?.remove();
+      destMarker.current = null;
+      return;
+    }
+    if (!destMarker.current) {
+      const el = makeEl('dest-marker');
+      el.append(makeEl('dest-pin'));
+      destMarker.current = new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat(dest).addTo(map);
+    } else {
+      destMarker.current.setLngLat(dest);
+    }
+  }, [dest]);
 
   useEffect(() => {
     const map = mapRef.current;

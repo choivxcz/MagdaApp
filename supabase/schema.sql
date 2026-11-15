@@ -580,3 +580,194 @@ as $$
 $$;
 revoke all on function public.waiting_for_drivers(text) from public, anon;
 grant execute on function public.waiting_for_drivers(text) to authenticated;
+
+-- =====================================================================
+-- 10. Trip planner: saved places (Home, School, Work...) and saved trips
+--     between any two places, not only between stops.
+-- =====================================================================
+
+create table if not exists public.saved_places (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  kind       text not null default 'other' check (kind in ('home', 'school', 'work', 'other')),
+  label      text not null check (char_length(label) between 1 and 60),
+  lat        double precision not null check (lat between -90 and 90),
+  lng        double precision not null check (lng between -180 and 180),
+  stop_id    text check (char_length(stop_id) <= 40),
+  created_at timestamptz not null default now()
+);
+create index if not exists saved_places_user_idx on public.saved_places (user_id, created_at);
+grant select, insert, update, delete on public.saved_places to authenticated;
+alter table public.saved_places enable row level security;
+drop policy if exists "own saved places" on public.saved_places;
+create policy "own saved places" on public.saved_places
+  for all to authenticated
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));
+
+-- A trip end is either a stop (pickup/dropoff_stop_id) or a place (label + lat/lng).
+alter table public.saved_trips
+  alter column direction drop not null,
+  alter column pickup_stop_id drop not null,
+  alter column dropoff_stop_id drop not null,
+  add column if not exists from_label text check (char_length(from_label) <= 80),
+  add column if not exists from_lat   double precision check (from_lat between -90 and 90),
+  add column if not exists from_lng   double precision check (from_lng between -180 and 180),
+  add column if not exists to_label   text check (char_length(to_label) <= 80),
+  add column if not exists to_lat     double precision check (to_lat between -90 and 90),
+  add column if not exists to_lng     double precision check (to_lng between -180 and 180);
+
+do $$ begin
+  alter table public.saved_trips add constraint saved_trips_ends_check check (
+    (pickup_stop_id is not null or (from_lat is not null and from_lng is not null))
+    and (dropoff_stop_id is not null or (to_lat is not null and to_lng is not null))
+  );
+exception when duplicate_object then null; end $$;
+
+-- =====================================================================
+-- 11. Community tips: what local commuters know that maps don't (route
+--     changes, where people wait, fares, terminals, road work).
+--     Everyone can read; signed-in riders post and vote "helpful";
+--     admins hide wrong or abusive tips. All changes go through the
+--     functions below, and readers only see the author's first name.
+-- =====================================================================
+
+create table if not exists public.community_tips (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  route_id   text not null,
+  category   text not null check (category in ('route_change', 'boarding', 'fare', 'terminal', 'road', 'other')),
+  body       text not null check (char_length(body) between 5 and 280),
+  stop_id    text check (char_length(stop_id) <= 40),
+  lat        double precision check (lat between -90 and 90),
+  lng        double precision check (lng between -180 and 180),
+  status     text not null default 'visible' check (status in ('visible', 'hidden')),
+  helpful    int not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists community_tips_route_idx on public.community_tips (route_id, status, created_at desc);
+create index if not exists community_tips_user_idx on public.community_tips (user_id, created_at desc);
+
+create table if not exists public.tip_votes (
+  tip_id     uuid not null references public.community_tips (id) on delete cascade,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (tip_id, user_id)
+);
+
+-- No direct table access: everything goes through the functions.
+alter table public.community_tips enable row level security;
+alter table public.tip_votes enable row level security;
+revoke all on public.community_tips from anon, authenticated;
+revoke all on public.tip_votes from anon, authenticated;
+
+create or replace function public.list_tips(p_route_id text, p_include_hidden boolean default false)
+returns table (
+  id uuid, category text, body text, stop_id text, lat double precision, lng double precision,
+  helpful int, created_at timestamptz, author text, mine boolean, voted boolean, status text
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select t.id, t.category, t.body, t.stop_id, t.lat, t.lng, t.helpful, t.created_at,
+         coalesce(nullif(split_part(trim(p.full_name), ' ', 1), ''), 'Commuter'),
+         coalesce(t.user_id = (select auth.uid()), false),
+         exists (select 1 from public.tip_votes v where v.tip_id = t.id and v.user_id = (select auth.uid())),
+         t.status
+    from public.community_tips t
+    left join public.profiles p on p.id = t.user_id
+   where t.route_id = p_route_id
+     and (t.status = 'visible' or (p_include_hidden and public.is_admin()))
+   order by t.created_at desc
+   limit 200;
+$$;
+revoke all on function public.list_tips(text, boolean) from public;
+grant execute on function public.list_tips(text, boolean) to anon, authenticated;
+
+create or replace function public.post_tip(
+  p_route_id text, p_category text, p_body text,
+  p_stop_id text default null, p_lat double precision default null, p_lng double precision default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+begin
+  if auth.uid() is null then raise exception 'Sign in to share a tip.'; end if;
+  if (select count(*) from public.community_tips
+       where user_id = auth.uid() and created_at > now() - interval '1 day') >= 10 then
+    raise exception 'You have shared 10 tips today. Please try again tomorrow.';
+  end if;
+  if (p_lat is null) <> (p_lng is null) then raise exception 'Location needs both latitude and longitude.'; end if;
+  insert into public.community_tips (user_id, route_id, category, body, stop_id, lat, lng)
+  values (auth.uid(), left(p_route_id, 60), p_category, trim(p_body), nullif(p_stop_id, ''), p_lat, p_lng)
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+revoke all on function public.post_tip(text, text, text, text, double precision, double precision) from public, anon;
+grant execute on function public.post_tip(text, text, text, text, double precision, double precision) to authenticated;
+
+-- Authors delete their own tips; admins can delete any.
+create or replace function public.delete_tip(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  delete from public.community_tips
+   where id = p_id and (user_id = auth.uid() or public.is_admin());
+  if not found then raise exception 'Tip not found, or it is not yours.'; end if;
+end;
+$$;
+revoke all on function public.delete_tip(uuid) from public, anon;
+grant execute on function public.delete_tip(uuid) to authenticated;
+
+-- "Helpful": one vote per rider, tap again to undo. Not on your own tip.
+create or replace function public.toggle_tip_vote(p_id uuid)
+returns table (helpful int, voted boolean)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_voted boolean;
+begin
+  if auth.uid() is null then raise exception 'Sign in to vote.'; end if;
+  if not exists (select 1 from public.community_tips t where t.id = p_id and t.status = 'visible' and t.user_id <> auth.uid()) then
+    raise exception 'You cannot vote on this tip.';
+  end if;
+  delete from public.tip_votes v where v.tip_id = p_id and v.user_id = auth.uid();
+  v_voted := not found;
+  if v_voted then
+    insert into public.tip_votes (tip_id, user_id) values (p_id, auth.uid());
+  end if;
+  update public.community_tips t
+     set helpful = (select count(*) from public.tip_votes v where v.tip_id = p_id)
+   where t.id = p_id;
+  return query select t.helpful, v_voted from public.community_tips t where t.id = p_id;
+end;
+$$;
+revoke all on function public.toggle_tip_vote(uuid) from public, anon;
+grant execute on function public.toggle_tip_vote(uuid) to authenticated;
+
+create or replace function public.admin_set_tip_status(p_id uuid, p_status text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  if p_status not in ('visible', 'hidden') then raise exception 'Unknown status.'; end if;
+  update public.community_tips set status = p_status where id = p_id;
+end;
+$$;
+revoke all on function public.admin_set_tip_status(uuid, text) from public, anon;
+grant execute on function public.admin_set_tip_status(uuid, text) to authenticated;

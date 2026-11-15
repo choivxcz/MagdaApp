@@ -4,10 +4,17 @@ import Icon from '../components/Icon.jsx';
 import { computeFare, peso } from '../lib/fare.js';
 import { DIRECTIONS, DIRECTION_KEYS, seatStatus } from '../lib/directions.js';
 import { usePrefs } from '../lib/prefs.js';
+import { useAuth } from '../lib/auth.jsx';
+import { useTips, TIP_CATEGORIES, tipAge } from '../lib/community.js';
+import { stopPlace } from '../lib/places.js';
+import CommunityScreen from './CommunityScreen.jsx';
 
 export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
   const [query, setQuery] = useState('');
+  const { user } = useAuth();
+  const { tips } = useTips(route.id, user?.id ?? null);
   if (sub === 'detail') return <RouteDetail route={route} jeepneys={jeepneys} openOnMap={openOnMap} />;
+  if (sub === 'community') return <CommunityScreen route={route} />;
 
   const q = query.trim().toLowerCase();
   const out = route.legs.to_santa_cruz;
@@ -51,12 +58,32 @@ export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
           </>
         )}
 
+        {!q && (
+          <>
+            <div className="section-label"><span>From commuters</span><span>{tips.length ? `${tips.length} tip${tips.length === 1 ? '' : 's'}` : ''}</span></div>
+            <button className="route-card" onClick={() => navigate('routes/community')}>
+              <div className="route-card-head">
+                <span className="tile"><Icon name="chat" size={20} /></span>
+                <span className="route-card-name">
+                  <b>Community tips</b>
+                  <span className="sub">
+                    {tips[0]
+                      ? `${TIP_CATEGORIES[tips[0].category].label}: “${tips[0].body.length > 70 ? `${tips[0].body.slice(0, 70)}…` : tips[0].body}” · ${tipAge(tips[0].createdAt)}`
+                      : 'Where people wait, route changes, fares, tricycles. Share what you know.'}
+                  </span>
+                </span>
+                <Icon name="chevron" size={18} className="menu-chevron" />
+              </div>
+            </button>
+          </>
+        )}
+
         {stops.length > 0 && (
           <>
             <div className="section-label"><span>Stops</span><span>{stops.length}</span></div>
             <div className="menu-card">
               {stops.map((s) => (
-                <button key={s.id} className="menu-row" onClick={() => openOnMap({ direction: s.id === 'magdalena-plaza' ? 'to_santa_cruz' : 'to_magdalena', dropoffStopId: s.id, pickupStopId: null, toOnly: true })}>
+                <button key={s.id} className="menu-row" onClick={() => openOnMap({ to: stopPlace(s) })}>
                   <span className="menu-icon"><Icon name={s.icon} size={20} /></span>
                   <span className="menu-text">
                     <span className="menu-title">{s.name}</span>

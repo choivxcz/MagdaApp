@@ -6,13 +6,13 @@ import { useAuth } from '../lib/auth.jsx';
 import { usePrefs, setPrefs } from '../lib/prefs.js';
 import { supabase, isDemo } from '../lib/supabase.js';
 import { updateProfile, fileReport, listMyReports, deleteMyAccount } from '../lib/account.js';
-import { computeFare, peso, FARE_RULES } from '../lib/fare.js';
+import { computeFare, peso, FARE_RULES, TRICYCLE_RULES } from '../lib/fare.js';
 import { DIRECTIONS, DIRECTION_KEYS } from '../lib/directions.js';
 
 import DriverApplyScreen from './DriverApplyScreen.jsx';
 import AdminScreen from './AdminScreen.jsx';
 
-const APP_VERSION = '0.5.0';
+const APP_VERSION = '0.6.0';
 
 export default function MoreScreen({ route, sub }) {
   switch (sub) {
@@ -102,6 +102,7 @@ function MoreMenu() {
 
         <MenuGroup title="Commute tools">
           <MenuRow icon="fare" title="Fare guide & calculator" sub="Fares between every stop" onClick={() => navigate('more/fares')} />
+          <MenuRow icon="chat" title="Community tips" sub="Route changes, where to wait, fares: from local commuters" onClick={() => navigate('routes/community')} />
           <MenuRow icon="report" title="Report a ride" sub="Overpricing, harassment, reckless driving" onClick={() => navigate('more/report')} />
           <MenuRow icon="phone" title="Emergency hotline" sub="Call 911 for police, fire or medical help" href="tel:911" />
         </MenuGroup>
@@ -219,6 +220,11 @@ function FareGuide({ route }) {
         <p className="fineprint">
           How fares are computed: ₱{FARE_RULES.base} for the first {FARE_RULES.baseKm} km, then ₱{FARE_RULES.perKm.toFixed(2)} per km.
           Discount: {FARE_RULES.discount * 100}%. Based on the {FARE_RULES.source}. Actual fares may differ.
+        </p>
+        <p className="fineprint">
+          Tricycles: the trip planner suggests one when a place is too far to walk from the route. Their fares are set by each town,
+          so the app only shows a rough estimate (₱{TRICYCLE_RULES.base} for the first {TRICYCLE_RULES.baseKm} km, then ₱{TRICYCLE_RULES.perKm} per km, shared ride).
+          Agree on the fare with the driver first; special trips cost more.
         </p>
       </div>
     </div>
@@ -341,7 +347,7 @@ function Account() {
   }
 
   async function removeAccount() {
-    if (!window.confirm('Delete your account? Your profile, photos and saved trips will be permanently deleted. This cannot be undone.')) return;
+    if (!window.confirm('Delete your account? Your profile, photos, saved places and trips, and community tips will be permanently deleted. This cannot be undone.')) return;
     setBusy(true);
     try {
       await deleteMyAccount(user.id);
@@ -380,7 +386,7 @@ function Account() {
           {msg && <p className="hint">{msg}</p>}
         </form>
         <MenuGroup title="Danger zone">
-          <MenuRow icon="trash" danger title={busy ? 'Deleting…' : 'Delete account'} sub="Permanently delete your account, profile, photos and saved trips"
+          <MenuRow icon="trash" danger title={busy ? 'Deleting…' : 'Delete account'} sub="Permanently delete your account, profile, photos, saved places, trips and tips"
             onClick={removeAccount} />
         </MenuGroup>
       </div>
@@ -396,8 +402,12 @@ function About() {
         <div className="about-logo"><Logo size={88} /></div>
         <h2>Sakay Laguna</h2>
         <p>
-          A free commuter app for the Magdalena – Santa Cruz, Laguna jeepney route. See jeepneys live on the map,
-          how many seats are free, when the next one reaches you, and how much your fare will be.
+          A free commuter app for the Magdalena – Santa Cruz, Laguna jeepney route. Search any place and it tells you how to
+          get there: where to walk, where to wait (sakayan), which jeepney to ride, where to get off (babaan), when a tricycle
+          makes sense, and about how much it costs. See jeepneys live on the map, how many seats are free, and when the next one reaches you.
+        </p>
+        <p>
+          Local commuters can share tips that maps don’t know, like where people actually wait, route changes and fare practices.
         </p>
         <p>
           Drivers share their location and passenger count from their phone during a trip. Riders do not need an
@@ -421,26 +431,30 @@ function Privacy() {
         <ul>
           <li><b>Account:</b> your email, name and fare type, so you can sign in and keep settings.</li>
           <li><b>Photos (optional):</b> your profile picture, and for drivers a photo of the jeepney. A commuter’s photo is only shown to them. For approved drivers, riders who tap the jeepney on the map see the driver’s name, profile picture and jeepney photo.</li>
-          <li><b>Saved trips:</b> the stops you saved. Only you can see them.</li>
+          <li><b>Saved places and trips:</b> the places (like Home or School) and trips you saved. Only you can see them.</li>
+          <li><b>Community tips (optional):</b> tips you share are public, shown with your first name only. If you attach your spot, it is rounded to about 10 m and shown with the tip. You can delete your tips at any time.</li>
           <li><b>“I’m waiting here” (optional):</b> the spot where you wait, your direction and how many you are. On-duty drivers see it without your name. It ends after 20 minutes or when you cancel, and is deleted soon after.</li>
           <li><b>Ride reports:</b> what you report, linked to your account so we can follow up.</li>
           <li><b>Drivers only:</b> the jeepney’s location and passenger count during a trip. Only the latest position is kept; it is hidden when the trip ends. Phone, license and franchise numbers are seen only by the admin.</li>
         </ul>
         <h3>What we don’t do</h3>
         <ul>
-          <li>We don’t track or store riders’ locations. When you use your location, it is sent once to the free OpenStreetMap walking-directions service (routing.openstreetmap.de) to draw your walk to the sakayan, and is not saved by us.</li>
-          <li>Questions you type in <b>Ask AI</b> go to Google Gemini to be answered (not your location). Don’t type personal details there.</li>
+          <li>We don’t track or store riders’ locations. When you plan a trip, your start and destination are sent to free OpenStreetMap services to draw walking and tricycle paths (routing.openstreetmap.de, router.project-osrm.org, valhalla1.openstreetmap.de) and to name a spot you tapped (photon.komoot.io). They are not saved by us.</li>
+          <li>What you type in the place search is sent to the free OpenStreetMap search service Photon (photon.komoot.io).</li>
+          <li>Questions you type in <b>Ask AI</b> go to Google Gemini to be answered. If your map shows a trip, its start and destination go to our own server to plan routes, but are not sent to Gemini. Don’t type personal details in the chat.</li>
           <li>We don’t sell your data or show ads.</li>
         </ul>
         <h3>Deleting your data</h3>
-        <p>More → Account & data → Delete account removes your account, profile, photos and saved trips. You can also remove a photo there at any time.</p>
+        <p>More → Account & data → Delete account removes your account, profile, photos, saved places and trips, and your community tips. You can also remove a photo there at any time.</p>
         <h3>Data sources</h3>
         <ul>
           <li>Map data © OpenStreetMap contributors, map tiles by OpenFreeMap.</li>
           <li>Fares estimated from the LTFRB jeepney fare matrix.</li>
           <li>Route traced from the project team’s description of the actual jeepney route.</li>
+          <li>Place search by Photon (komoot), using OpenStreetMap data.</li>
+          <li>Tricycle fares are rough estimates; each town sets its own.</li>
         </ul>
-        <p className="fineprint">Services used: Supabase (accounts, database and photo storage), FOSSGIS OpenStreetMap routing (walking directions), Google Gemini (Ask AI), Vercel (website).</p>
+        <p className="fineprint">Services used: Supabase (accounts, database and photo storage), FOSSGIS OpenStreetMap routing and OSRM (walking and road directions), Photon by komoot (place search), Google Gemini (Ask AI), Vercel (website).</p>
       </div>
     </div>
   );

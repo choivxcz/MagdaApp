@@ -4,10 +4,11 @@ import { ScrollRow } from './ui.jsx';
 
 export const GREETING = {
   role: 'assistant',
-  text: 'Hi! I’m **Sakay AI**. Ask me about fares, the next jeepney, free seats or the route — in English or Tagalog.',
+  text: 'Hi! I’m **Sakay AI**. Ask me how to get anywhere along the route, fares, the next jeepney or free seats — in English or Tagalog.',
 };
 
 const SUGGESTIONS = [
+  'Paano pumunta sa Jollibee Pedro Guevarra?',
   'Magkano Magdalena papuntang Santa Cruz?',
   'May jeep ba papuntang Santa Cruz ngayon?',
   'When is the next jeep at the Capitol?',
@@ -63,7 +64,7 @@ export default function AssistantSheet({ chat, onSend, onShowTrip, onClose }) {
           <AiLogo size={42} className="assistant-badge" />
           <div className="assistant-title">
             <b>Sakay AI</b>
-            <span className="sub">Fares, jeepneys, seats · English or Tagalog</span>
+            <span className="sub">Directions, fares, jeepneys · English or Tagalog</span>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" size={20} /></button>
         </header>

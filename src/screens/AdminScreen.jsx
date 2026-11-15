@@ -4,6 +4,9 @@ import { photoUrl } from '../lib/photos.js';
 import Icon from '../components/Icon.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { adminListDrivers, adminReviewDriver, adminListReports, adminSetReportStatus } from '../lib/account.js';
+import { fetchTips, adminSetTipStatus, deleteTip } from '../lib/community.js';
+import { TipCard } from './CommunityScreen.jsx';
+import routeData from '../data/route-magdalena-santa-cruz.json';
 
 const DRIVER_FILTERS = [
   ['pending', 'Pending'],
@@ -32,8 +35,8 @@ export default function AdminScreen() {
     <div className="page">
       <PageHeader title="Admin tools" back="more" />
       <div className="page-body">
-        <Segmented value={tab} onChange={setTab} options={[['drivers', 'Drivers'], ['reports', 'Ride reports']]} />
-        {tab === 'drivers' ? <Drivers onChange={reloadMe} /> : <Reports />}
+        <Segmented value={tab} onChange={setTab} options={[['drivers', 'Drivers'], ['reports', 'Ride reports'], ['tips', 'Tips']]} />
+        {tab === 'drivers' ? <Drivers onChange={reloadMe} /> : tab === 'reports' ? <Reports /> : <Tips />}
       </div>
     </div>
   );
@@ -198,6 +201,65 @@ function Reports() {
             </div>
           </div>
         ))
+      )}
+    </>
+  );
+}
+
+// Community tips, including hidden ones, so admins can hide wrong or abusive tips.
+function Tips() {
+  const [rows, setRows] = useState(null);
+  const [filter, setFilter] = useState('visible');
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      setRows(await fetchTips(routeData.id, { includeHidden: true }));
+      setError('');
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function hide(t) {
+    try {
+      await adminSetTipStatus(t.id, t.status === 'hidden' ? 'visible' : 'hidden');
+      await load();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function remove(t) {
+    if (!window.confirm('Delete this tip for good?')) return;
+    try {
+      await deleteTip(t.id);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  const shown = (rows ?? []).filter((t) => t.status === filter);
+  const hidden = (rows ?? []).filter((t) => t.status === 'hidden').length;
+
+  return (
+    <>
+      <div className="filter-chips">
+        <button className={filter === 'visible' ? 'on' : ''} onClick={() => setFilter('visible')}>Visible <span>{(rows?.length ?? 0) - hidden}</span></button>
+        <button className={filter === 'hidden' ? 'on' : ''} onClick={() => setFilter('hidden')}>Hidden <span>{hidden}</span></button>
+        <button className="icon-btn small refresh" onClick={load} aria-label="Refresh"><Icon name="refresh" size={16} /></button>
+      </div>
+      {error && <p className="warn">{error}</p>}
+      {rows === null ? (
+        <p className="hint">Loading…</p>
+      ) : shown.length === 0 ? (
+        <p className="hint center">{filter === 'visible' ? 'No tips yet.' : 'No hidden tips.'}</p>
+      ) : (
+        <div className="tip-list">
+          {shown.map((t) => <TipCard key={t.id} tip={t} route={routeData} user={null} isAdmin onVote={() => {}} onDelete={remove} onHide={hide} />)}
+        </div>
       )}
     </>
   );

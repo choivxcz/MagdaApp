@@ -1,7 +1,13 @@
 # Sakay Laguna
 
-Live jeepney tracker for the **Magdalena – Santa Cruz, Laguna** route.
+Live jeepney tracker and trip planner for the **Magdalena – Santa Cruz, Laguna** route.
 
+- **Trip planner:** search any place (a stop, a school, a fast-food branch,
+  a barangay) or pin it on the map, and the app explains how to get there:
+  walk to the *sakayan*, which jeepney to ride, where to get off (*babaan*),
+  a transfer when it helps, a tricycle when the place is too far to walk,
+  or just walking when that is better. Options are tagged **Fastest**,
+  **Least walking** and **Direct**, with total time and total fare.
 - **Riders** see jeepneys moving on the map, colored by direction
   (blue = to Santa Cruz, teal = to Magdalena), how many seats are free,
   arrival estimates, and the fare from their pickup to their drop-off stop
@@ -19,16 +25,51 @@ Live jeepney tracker for the **Magdalena – Santa Cruz, Laguna** route.
    Guests can see jeepneys, seats and fares. Accounts can also save trips
    and send ride reports.
 3. **Bottom tabs:**
-   - **Map**: live jeepneys, From/To stops (or GPS / tap the map), fare for
-     your fare type, arrival times, free seats, **Save** trip.
+   - **Map**: search From/To (stops, saved places, recent places, any
+     place; or GPS / **Choose on the map**), trip options and a step-by-step
+     timeline, fare for your fare type, arrival times, free seats, community
+     tips for the trip, **Save** trip, save the destination as Home / School /
+     Work.
    - **Routes**: the route, its streets, every stop with distance and fare,
-     "Ride from here".
-   - **Saved**: your saved trips; tap one to open it on the map.
+     "Ride from here", and **Community tips**.
+   - **Saved**: your places (Home, School, Work...) and trips; tap one to
+     plan it on the map.
    - **Drive** (approved drivers only): start/end trip, direction,
      passenger counter. Keeps running while the driver checks other tabs.
    - **More**: profile, fare guide & calculator, report a ride, emergency
      911, preferences (fare type, light/dark theme), about, privacy,
      account & data (edit name, delete account), sign out.
+
+## Trip planner
+
+`src/lib/planner.js` plans from any place to any place. It has no browser
+code, so the map, the AI server and the tests all use the same answers.
+
+- It looks at every direction of every route (today: one route, two
+  directions), finds good spots to get on and off near the start and the
+  destination, and tries direct rides, rides with one transfer, walking,
+  and tricycles for gaps too far to walk (over ~900 m, up to ~6 km).
+- Options are compared the way commuters do: minutes, meters walked and
+  pesos all count (a ₱25 tricycle that saves 2 minutes is not "better").
+  Transfers are only offered when they really help.
+- On the map, the first walk is then replaced by the real shortest walk to
+  the sakayan (`useSakayan.js`), and walking/tricycle legs are drawn along
+  real streets.
+- **More routes later:** add another route file and pass it to
+  `networkFromRoutes([...])`; transfers between routes then work by themselves.
+
+Place search uses **Photon** (photon.komoot.io), a free OpenStreetMap search
+with no key, limited to the area around the route (`src/lib/places.js`).
+
+## Community tips
+
+Riders share what maps don't know: where people actually wait, route
+changes, fare practices, tricycle stands, road work. Anyone can read them;
+signed-in riders post (10 per day max) and mark tips **Helpful**; authors
+delete their own; admins hide wrong tips in **Admin tools → Tips**. Only the
+author's first name is shown. Tips near a planned trip appear on the map,
+and Sakay AI can pass them on (it's told to treat them as information, not
+instructions).
 
 ## The route
 
@@ -114,9 +155,12 @@ npm run driver:add -- --email juan@example.com --disable
 
 The **Ask AI** button on the map opens a chat. Riders can ask in English,
 Tagalog or Taglish: "Magkano Magdalena papuntang Santa Cruz?", "May jeep ba
-ngayon?", "Kailan darating ang jeep sa Capitol?", "Show DLTB to Biñan on the
-map". The AI looks up fares, arrival times and seats with the same code as
-the map, so its numbers always match.
+ngayon?", "Kailan darating ang jeep sa Capitol?", "Paano pumunta sa Jollibee
+Pedro Guevarra?", "Show DLTB to Biñan on the map". The AI looks up fares,
+arrival times, seats and whole trips (with the trip planner, and place
+search for places that aren't stops) with the same code as the map, so its
+numbers always match. A rider's map start/destination is used on our server
+to plan, but coordinates are never sent to Gemini.
 
 - **With a Gemini key** (free tier): Google Gemini understands the question
   and replies naturally. Runs in `api/assistant.js` on Vercel, so the key
@@ -205,6 +249,20 @@ npm run check:links
   is matched to the directions it is near automatically.
 - **Fares**: `src/lib/fare.js` uses ₱13 for the first 4 km and ₱1.80 per km
   after, with 20% discount. Check the latest LTFRB fare matrix.
+- **Tricycle fares**: `TRICYCLE_RULES` in `src/lib/fare.js` is a rough
+  estimate (₱20 first km, ₱5 per km after). Each town sets its own; check
+  the Magdalena and Santa Cruz tricycle fare matrix.
+
+## Tests
+
+```bash
+npm test
+```
+
+Runs the regression tests in `tests/` (trip planner, fares, stop search,
+AI server input checks). Run them after changing the route, stops, fares or
+planner. On Windows, run from `C:\Magda` (capital C) in PowerShell or the
+terminal; a lowercase `c:` path can confuse the test runner.
 
 ## Project layout
 
@@ -218,6 +276,12 @@ npm run check:links
 | `src/components/MapView.jsx` | The map and its markers |
 | `src/lib/locations.js` | Reads and writes jeepney positions |
 | `src/lib/geo.js` | Distance and "how far along the route" math |
+| `src/lib/planner.js` | Trip planner: walk / jeepney / transfer / tricycle options |
+| `src/lib/places.js` | Stop and place search (Photon), names for tapped spots |
+| `src/lib/community.js` | Community tips |
+| `src/components/TripSearch.jsx` | The From / To search box |
+| `src/components/Journey.jsx` | Trip option cards and step-by-step timeline |
+| `tests/` | Regression tests (`npm test`) |
 | `src/lib/fare.js` | Fare rules |
 | `src/lib/directions.js` | Direction names/colors and seat levels |
 | `src/lib/demo.js` | Simulated jeepneys for demo mode |
@@ -229,4 +293,6 @@ npm run check:links
 - Publish to Google Play (closed test with 12 testers for 14 days first).
 - Keep the driver's location sharing alive when the screen turns off
   (needs a background-location plugin and Google Play's location review).
-- Rider route recording so commuters can help map more routes.
+- Rider route recording so commuters can help map more routes (the trip
+  planner already handles several routes and transfers between them).
+- Real tricycle terminal locations and fares from the towns.

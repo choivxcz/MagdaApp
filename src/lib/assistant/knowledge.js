@@ -11,7 +11,7 @@ const MIN_RIDE_M = 100;
 const STALE_MS = 2 * 60 * 1000;
 
 // Extra names people use for each stop (English, Tagalog, short forms).
-const ALIASES = {
+export const ALIASES = {
   'magdalena-plaza': ['magdalena plaza', 'magdalena terminal', 'bayan ng magdalena', 'magdalena', 'magda'],
   buenavista: ['buenavista', 'buena vista'],
   cigaras: ['cigaras'],

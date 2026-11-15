@@ -1,22 +1,25 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader, navigate } from '../components/ui.jsx';
 import Icon from '../components/Icon.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { listSavedTrips, deleteSavedTrip } from '../lib/account.js';
-import { computeFare, peso } from '../lib/fare.js';
-import { DIRECTIONS } from '../lib/directions.js';
+import { listSavedTrips, deleteSavedTrip, deleteSavedPlace, tripPlaces, PLACE_KINDS } from '../lib/account.js';
+import { useSavedPlaces } from '../lib/useSavedPlaces.js';
+import { planJourneys, networkFromRoutes, fmtMinutes } from '../lib/planner.js';
+import { fareText } from '../components/Journey.jsx';
 import { usePrefs, setPrefs } from '../lib/prefs.js';
 import { isDemo } from '../lib/supabase.js';
 
 const WHAT_YOU_CAN_SAVE = [
+  ['home', 'Places', 'Home, school, work: one tap to plan a trip there'],
   ['heart', 'Trips', 'Your usual rides, like home to school, one tap away'],
   ['fare', 'Your fare type', 'Regular or discounted fares, on every phone you sign in to'],
-  ['report', 'Ride reports', 'Follow what happened to reports you sent'],
 ];
 
 export default function SavedScreen({ route, openOnMap }) {
   const { user } = useAuth();
   const prefs = usePrefs();
+  const saved = useSavedPlaces(user);
+  const network = useMemo(() => networkFromRoutes([route]), [route]);
   const [trips, setTrips] = useState(null);
   const [error, setError] = useState('');
 
@@ -32,9 +35,10 @@ export default function SavedScreen({ route, openOnMap }) {
 
   useEffect(() => {
     load();
-  }, [load]);
+    saved.reload();
+  }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function remove(id) {
+  async function removeTrip(id) {
     if (!window.confirm('Remove this saved trip?')) return;
     try {
       await deleteSavedTrip(id);
@@ -44,16 +48,28 @@ export default function SavedScreen({ route, openOnMap }) {
     }
   }
 
+  async function removePlace(p) {
+    if (!window.confirm(`Remove “${p.label}” from your places?`)) return;
+    try {
+      await deleteSavedPlace(p.id);
+      await saved.reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  const missingKinds = ['home', 'school', 'work'].filter((k) => !saved.places.some((p) => p.placeKind === k));
+
   return (
     <div className="page">
-      <PageHeader title="Saved" subtitle="Trips you’ve saved for quick access." />
+      <PageHeader title="Saved" subtitle="Your places and trips, one tap away." />
       <div className="page-body">
         {!user ? (
           <>
             <div className="empty">
               <span className="empty-icon"><Icon name="heart" size={30} /></span>
-              <h3>Save your trips for later</h3>
-              <p>Sign in to keep your usual trips in one place, on any phone.</p>
+              <h3>Save your places and trips</h3>
+              <p>Sign in to keep Home, School, Work and your usual trips in one place, on any phone.</p>
               {!isDemo && (
                 <div className="stack">
                   <button className="btn primary pill-btn" onClick={() => setPrefs({ guest: false })}>Sign in</button>
@@ -73,47 +89,69 @@ export default function SavedScreen({ route, openOnMap }) {
           </>
         ) : (
           <>
-            {error && <p className="warn">{error}</p>}
+            {(error || saved.error) && <p className="warn">{error || saved.error}</p>}
+
+            <div className="section-label"><span>Places</span>{saved.places.length > 0 && <span>{saved.places.length}</span>}</div>
+            <div className="menu-card">
+              {saved.places.map((p) => (
+                <div key={p.id} className="menu-row saved-row">
+                  <button className="saved-main" onClick={() => openOnMap({ to: p })}>
+                    <span className="menu-icon"><Icon name={p.icon} size={20} /></span>
+                    <span className="menu-text">
+                      <span className="menu-title">{p.label}</span>
+                      <span className="menu-sub">{p.sub} · Plan a trip here</span>
+                    </span>
+                  </button>
+                  <button className="icon-btn" onClick={() => removePlace(p)} aria-label={`Remove ${p.label}`}>
+                    <Icon name="trash" size={18} />
+                  </button>
+                </div>
+              ))}
+              {missingKinds.map((k) => (
+                <button key={k} className="menu-row" onClick={() => navigate('map')}>
+                  <span className="menu-icon faded"><Icon name={PLACE_KINDS[k].icon} size={20} /></span>
+                  <span className="menu-text">
+                    <span className="menu-title">Add {PLACE_KINDS[k].label.toLowerCase()}</span>
+                    <span className="menu-sub">On the Map, search for it, then tap “Save as {PLACE_KINDS[k].label}”</span>
+                  </span>
+                  <Icon name="plus" size={18} className="menu-chevron" />
+                </button>
+              ))}
+            </div>
+
+            <div className="section-label"><span>Trips</span>{trips?.length > 0 && <span>{trips.length}</span>}</div>
             {trips === null ? (
               <p className="hint">Loading…</p>
             ) : trips.length === 0 ? (
-              <div className="empty">
-                <span className="empty-icon"><Icon name="heart" size={30} /></span>
-                <h3>Nothing saved yet</h3>
-                <p>On the Map, choose where you ride from and to, then tap the heart.</p>
+              <div className="empty compact">
+                <p>On the Map, choose where you start and where you’re going, then tap the heart.</p>
                 <button className="btn primary pill-btn" onClick={() => navigate('map')}>Plan a trip</button>
               </div>
             ) : (
-              <>
-                <div className="section-label"><span>Trips</span><span>{trips.length}</span></div>
-                <div className="menu-card">
-                  {trips.map((t) => {
-                    const leg = route.legs[t.direction];
-                    const from = leg?.stops.find((s) => s.id === t.pickup_stop_id);
-                    const to = leg?.stops.find((s) => s.id === t.dropoff_stop_id);
-                    const fare = from && to ? computeFare(to.along - from.along) : null;
-                    return (
-                      <div key={t.id} className="menu-row saved-row">
-                        <button
-                          className="saved-main"
-                          onClick={() => openOnMap({ direction: t.direction, pickupStopId: t.pickup_stop_id, dropoffStopId: t.dropoff_stop_id })}
-                        >
-                          <span className={`menu-icon dir ${DIRECTIONS[t.direction].className}`}><Icon name="arrow" size={18} /></span>
-                          <span className="menu-text">
-                            <span className="menu-title">{t.name}</span>
-                            <span className="menu-sub">
-                              {DIRECTIONS[t.direction].label}{fare ? ` · ${peso(fare[prefs.fareType])} · ${fare.km.toFixed(1)} km` : ' · stop no longer on route'}
-                            </span>
+              <div className="menu-card">
+                {trips.map((t) => {
+                  const { from, to } = tripPlaces(t, route);
+                  const best = from && to ? planJourneys(network, from, to).options[0] : null;
+                  return (
+                    <div key={t.id} className="menu-row saved-row">
+                      <button className="saved-main" disabled={!from || !to} onClick={() => openOnMap({ from, to })}>
+                        <span className="menu-icon"><Icon name="arrow" size={18} /></span>
+                        <span className="menu-text">
+                          <span className="menu-title">{t.name}</span>
+                          <span className="menu-sub">
+                            {best
+                              ? `~${fmtMinutes(best.minutes)} · ${fareText(best, prefs.fareType)}${best.rides >= 2 ? ' · 1 transfer' : ''}`
+                              : from && to ? 'No route found right now' : 'A stop in this trip is no longer on the route'}
                           </span>
-                        </button>
-                        <button className="icon-btn" onClick={() => remove(t.id)} aria-label={`Remove ${t.name}`}>
-                          <Icon name="trash" size={18} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
+                        </span>
+                      </button>
+                      <button className="icon-btn" onClick={() => removeTrip(t.id)} aria-label={`Remove ${t.name}`}>
+                        <Icon name="trash" size={18} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </>
         )}

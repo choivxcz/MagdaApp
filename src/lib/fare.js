@@ -18,4 +18,21 @@ export function computeFare(meters, rules = FARE_RULES) {
   return { km, regular, discounted };
 }
 
+// Tricycle fares are set by each town (TODA ordinance), not by LTFRB, so this
+// is only a rough per-passenger estimate for a shared ride. CHECK with the
+// Magdalena and Santa Cruz tricycle fare matrix. Special (solo) trips cost more.
+export const TRICYCLE_RULES = {
+  base: 20, // pesos for the first `baseKm`
+  baseKm: 1,
+  perKm: 5,
+  discount: 0.2,
+  source: 'estimate; tricycle fares are set by each town',
+};
+
+export function tricycleFare(meters, rules = TRICYCLE_RULES) {
+  const extraKm = Math.max(0, Math.ceil(meters / 1000 - rules.baseKm));
+  const regular = Math.round(rules.base + extraKm * rules.perKm);
+  return { km: meters / 1000, regular, discounted: Math.round(regular * (1 - rules.discount)) };
+}
+
 export const peso = (n) => `₱${n.toFixed(2)}`;

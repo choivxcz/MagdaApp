@@ -1,4 +1,4 @@
-// Commuter account data: profile, saved trips, ride reports.
+// Commuter account data: profile, saved trips and places, ride reports.
 import { supabase } from './supabase.js';
 import { removeAllMyPhotos } from './photos.js';
 
@@ -19,14 +19,85 @@ export async function listSavedTrips() {
   return must(await supabase.from('saved_trips').select('*').order('created_at', { ascending: false }));
 }
 
-export async function saveTrip({ name, direction, pickupStopId, dropoffStopId }) {
+// A trip between any two places. Stops are saved by id (so they follow
+// route edits); other places by their label and coordinates.
+// direction is only filled in for simple stop-to-stop rides (older app versions read it).
+export async function saveTrip({ name, from, to, direction = null }) {
+  const pt = (p) => (p.stopId ? [null, null] : [+p.point[1].toFixed(6), +p.point[0].toFixed(6)]);
+  const [fromLat, fromLng] = pt(from);
+  const [toLat, toLng] = pt(to);
   return must(
     await supabase
       .from('saved_trips')
-      .insert({ name, direction, pickup_stop_id: pickupStopId, dropoff_stop_id: dropoffStopId })
+      .insert({
+        name: name.slice(0, 60),
+        direction,
+        pickup_stop_id: from.stopId ?? null,
+        dropoff_stop_id: to.stopId ?? null,
+        from_label: from.stopId ? null : from.label.slice(0, 80),
+        from_lat: fromLat,
+        from_lng: fromLng,
+        to_label: to.stopId ? null : to.label.slice(0, 80),
+        to_lat: toLat,
+        to_lng: toLng,
+      })
       .select()
       .single(),
   );
+}
+
+// Turns a saved_trips row back into { from, to } places (null if a stop is gone).
+export function tripPlaces(row, route) {
+  const place = (stopId, label, lat, lng) => {
+    if (stopId) {
+      const s = route.stops.find((x) => x.id === stopId);
+      return s ? { kind: 'stop', stopId: s.id, label: s.name, point: s.coord, icon: s.icon } : null;
+    }
+    return lat != null && lng != null ? { kind: 'place', label: label || 'Saved place', point: [lng, lat] } : null;
+  };
+  return {
+    from: place(row.pickup_stop_id, row.from_label, row.from_lat, row.from_lng),
+    to: place(row.dropoff_stop_id, row.to_label, row.to_lat, row.to_lng),
+  };
+}
+
+// ---- Saved places (Home, School, Work...) ----
+
+export const PLACE_KINDS = {
+  home: { label: 'Home', icon: 'home' },
+  school: { label: 'School', icon: 'school' },
+  work: { label: 'Work', icon: 'work' },
+  other: { label: 'Place', icon: 'star' },
+};
+
+export async function listSavedPlaces() {
+  const rows = must(await supabase.from('saved_places').select('*').order('created_at', { ascending: true }));
+  return rows.map((r) => ({
+    id: r.id,
+    kind: 'saved',
+    placeKind: r.kind,
+    label: r.label,
+    sub: PLACE_KINDS[r.kind]?.label ?? 'Saved place',
+    point: [r.lng, r.lat],
+    stopId: r.stop_id ?? null,
+    icon: PLACE_KINDS[r.kind]?.icon ?? 'star',
+  }));
+}
+
+// Home, School and Work are one each: saving a new Home replaces the old one.
+export async function savePlace({ placeKind, label, point, stopId }) {
+  if (placeKind !== 'other') must(await supabase.from('saved_places').delete().eq('kind', placeKind));
+  return must(await supabase.from('saved_places').insert({
+    kind: placeKind,
+    label: label.slice(0, 60),
+    lat: +point[1].toFixed(6),
+    lng: +point[0].toFixed(6),
+    stop_id: stopId ?? null,
+  }));
+}
+
+export async function deleteSavedPlace(id) {
+  return must(await supabase.from('saved_places').delete().eq('id', id));
 }
 
 export async function deleteSavedTrip(id) {

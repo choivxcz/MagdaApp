@@ -88,6 +88,18 @@ export async function walkingPath(from, to) {
   return result;
 }
 
+// A tricycle's path along the roads, or null.
+export async function roadPath(from, to) {
+  const key = 'road:' + ll(from) + ';' + ll(to);
+  if (cache.has(key)) return cache.get(key);
+  const r = await firstOk([(s) => osrmRoute(OSRM_ROAD, 'driving', from, to, s)]);
+  if (!r) return null;
+  const result = { coords: [from, ...r.coords, to], meters: r.meters };
+  if (cache.size > 50) cache.clear();
+  cache.set(key, result);
+  return result;
+}
+
 // Which of several spots is the shortest walk from `from` (one request per
 // service, same race). Returns its index, or null if no service answered.
 export async function fastestOf(from, points) {

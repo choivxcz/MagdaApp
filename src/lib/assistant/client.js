@@ -19,9 +19,16 @@ const snapshot = (jeepneys) => jeepneys.map((j) => ({
   updatedAt: j.updatedAt instanceof Date ? j.updatedAt.toISOString() : j.updatedAt,
 }));
 
+// The most useful community tips, short, for the AI to relay.
+const tipSnapshot = (tips = []) => [...tips]
+  .sort((a, b) => b.helpful - a.helpful || b.createdAt - a.createdAt)
+  .slice(0, 15)
+  .map((t) => ({ category: t.category, body: t.body, stopId: t.stopId }));
+
 // messages: [{ role: 'user' | 'assistant', text }], last one is the question.
+// mapTrip: { fromId, toId, from: { label, point }, to: { label, point } }
 // Returns { text, actions, source: 'ai' | 'offline', memory }.
-export async function askAssistant({ messages, route, jeepneys, fareType, mapTrip, demo, memory }) {
+export async function askAssistant({ messages, route, jeepneys, fareType, mapTrip, demo, memory, tips }) {
   const question = messages[messages.length - 1].text;
   // Always run the offline reader too: it remembers the stops mentioned,
   // so it can take over mid-conversation if the AI drops out.
@@ -36,7 +43,7 @@ export async function askAssistant({ messages, route, jeepneys, fareType, mapTri
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         messages: messages.slice(-10).map((m) => ({ role: m.role, text: m.text })),
-        context: { jeepneys: snapshot(jeepneys), fareType, mapTrip, demo },
+        context: { jeepneys: snapshot(jeepneys), fareType, mapTrip, demo, tips: tipSnapshot(tips) },
       }),
       signal: AbortSignal.timeout(25000),
     });
