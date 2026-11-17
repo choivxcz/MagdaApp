@@ -771,3 +771,121 @@ end;
 $$;
 revoke all on function public.admin_set_tip_status(uuid, text) from public, anon;
 grant execute on function public.admin_set_tip_status(uuid, text) to authenticated;
+
+-- =====================================================================
+-- 12. Driver tools: trip status (loading at the terminal, break,
+--     refueling, breakdown, last trip), a private earnings log for the
+--     boundary system, and SOS alerts the admin can see.
+-- =====================================================================
+
+alter table public.jeepney_locations
+  add column if not exists trip_status text not null default 'on_trip',
+  add column if not exists last_trip   boolean not null default false;
+
+do $$ begin
+  alter table public.jeepney_locations add constraint jeepney_locations_trip_status_check
+    check (trip_status in ('on_trip', 'loading', 'break', 'refueling', 'breakdown'));
+exception when duplicate_object then null; end $$;
+
+-- One row per driver per day. Only the driver can see it.
+create table if not exists public.driver_earnings (
+  user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  day        date not null,
+  gross      numeric(9, 2) not null default 0 check (gross between 0 and 100000),
+  fuel       numeric(9, 2) not null default 0 check (fuel between 0 and 100000),
+  boundary   numeric(9, 2) not null default 0 check (boundary between 0 and 100000),
+  other      numeric(9, 2) not null default 0 check (other between 0 and 100000),
+  trips      int not null default 0 check (trips between 0 and 200),
+  km         numeric(7, 1) not null default 0 check (km between 0 and 2000),
+  minutes    int not null default 0 check (minutes between 0 and 1440),
+  note       text check (char_length(note) <= 200),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, day)
+);
+grant select, insert, update, delete on public.driver_earnings to authenticated;
+alter table public.driver_earnings enable row level security;
+drop policy if exists "own earnings" on public.driver_earnings;
+create policy "own earnings" on public.driver_earnings
+  for all to authenticated
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));
+
+-- SOS: an approved driver's emergency alert with their location.
+create table if not exists public.sos_alerts (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  plate       text,
+  lat         double precision check (lat between -90 and 90),
+  lng         double precision check (lng between -180 and 180),
+  status      text not null default 'open' check (status in ('open', 'resolved')),
+  created_at  timestamptz not null default now(),
+  resolved_at timestamptz
+);
+create index if not exists sos_alerts_status_idx on public.sos_alerts (status, created_at desc);
+grant select, insert on public.sos_alerts to authenticated;
+alter table public.sos_alerts enable row level security;
+
+drop policy if exists "driver sends sos" on public.sos_alerts;
+create policy "driver sends sos" on public.sos_alerts
+  for insert to authenticated
+  with check (user_id = (select auth.uid()) and public.is_approved_driver() and status = 'open');
+drop policy if exists "read own or admin sos" on public.sos_alerts;
+create policy "read own or admin sos" on public.sos_alerts
+  for select to authenticated
+  using (user_id = (select auth.uid()) or public.is_admin());
+
+-- The plate comes from the driver's record, not from the phone.
+create or replace function public.fill_sos_alert()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  select d.plate into new.plate from public.drivers d where d.user_id = new.user_id;
+  new.created_at := now();
+  return new;
+end;
+$$;
+drop trigger if exists fill_sos_alert on public.sos_alerts;
+create trigger fill_sos_alert
+  before insert on public.sos_alerts
+  for each row execute function public.fill_sos_alert();
+
+-- Admin view: alerts with the driver's name and phone, so the admin can call.
+create or replace function public.admin_list_sos()
+returns table (
+  id uuid, plate text, lat double precision, lng double precision, status text,
+  created_at timestamptz, resolved_at timestamptz, full_name text, phone text
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select a.id, a.plate, a.lat, a.lng, a.status, a.created_at, a.resolved_at, d.full_name, d.phone
+    from public.sos_alerts a
+    left join public.drivers d on d.user_id = a.user_id
+   where public.is_admin()
+   order by a.created_at desc
+   limit 100;
+$$;
+revoke all on function public.admin_list_sos() from public, anon;
+grant execute on function public.admin_list_sos() to authenticated;
+
+create or replace function public.admin_resolve_sos(p_id uuid, p_status text default 'resolved')
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  if p_status not in ('open', 'resolved') then raise exception 'Unknown status.'; end if;
+  update public.sos_alerts
+     set status = p_status, resolved_at = case when p_status = 'resolved' then now() else null end
+   where id = p_id;
+end;
+$$;
+revoke all on function public.admin_resolve_sos(uuid, text) from public, anon;
+grant execute on function public.admin_resolve_sos(uuid, text) to authenticated;

@@ -2,7 +2,7 @@
 import { useSyncExternalStore } from 'react';
 
 const KEY = 'sakay:prefs:v1';
-const DEFAULTS = { onboarded: false, guest: false, fareType: 'regular', theme: 'system' };
+const DEFAULTS = { onboarded: false, guest: false, fareType: 'regular', theme: 'system', showLandmarks: true };
 
 function load() {
   try {

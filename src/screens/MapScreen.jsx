@@ -23,8 +23,40 @@ import { OptionCards, Timeline, fareText } from '../components/Journey.jsx';
 import { ScrollRow, navigate } from '../components/ui.jsx';
 import { gpsErrorText } from '../lib/gps.js';
 import { askAssistant } from '../lib/assistant/client.js';
+import { landmarks } from '../lib/landmarkData.js';
+import { LANDMARK_CATS, RANK_LABEL, offRoute } from '../lib/landmarks.js';
+import { addRecent } from '../lib/recents.js';
+import { inService, riderStatusText } from '../lib/tripStatus.js';
 
 const AVG_SPEED_MPS = 20 / 3.6; // jeepneys average ~20 km/h with stops
+
+// The card for a landmark tapped on the map: what it is, how close the
+// jeepney passes, and buttons to go there or start from there.
+function LandmarkCard({ landmark, route, onGo, onStart, onClose }) {
+  const cat = LANDMARK_CATS[landmark.cat];
+  const place = landmarks.place(landmark);
+  const off = offRoute(route, landmark.coord);
+  return (
+    <div className="landmark-card" role="dialog" aria-label={landmark.name}>
+      <div className="landmark-card-head">
+        <span className="landmark-icon" style={{ background: cat.color }}><Icon name={cat.icon} size={18} /></span>
+        <div>
+          <b>{landmark.name}</b>
+          <span className="sub">{place.sub}</span>
+          <span className="sub">
+            {landmark.rank === 0 ? `${RANK_LABEL[0]} · ` : ''}
+            {off < 40 ? 'The jeepney passes right in front' : `About ${fmtMeters(off)} from the jeepney route`}
+          </span>
+        </div>
+        <button className="icon-btn small" onClick={onClose} aria-label="Close"><Icon name="close" size={16} /></button>
+      </div>
+      <div className="landmark-actions">
+        <button className="btn primary small" onClick={onGo}><Icon name="pin" size={15} /> Go here</button>
+        <button className="btn small" onClick={onStart}><Icon name="locate" size={15} /> Start here</button>
+      </div>
+    </div>
+  );
+}
 
 function agoText(date) {
   const s = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
@@ -52,6 +84,7 @@ function JeepRow({ j, detail, onOpen }) {
         <span className={`jeep-avatar ${DIRECTIONS[j.direction]?.className}`}><Icon name="bus" size={18} /></span>
         <span className="jeep-row-text">
           <span className="jeep-row-title"><b>{j.plate}</b><DirBadge direction={j.direction} /></span>
+          {riderStatusText(j) && <span className={`jeep-row-status ${j.tripStatus ?? ''}`}>{riderStatusText(j)}</span>}
           <span className="sub">{detail ?? agoText(j.updatedAt)}</span>
         </span>
         <SeatChip jeep={j} />
@@ -109,6 +142,8 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   const closeChat = useCallback(() => setChatOpen(false), []);
 
   const stops = route.stops;
+  const [selectedLm, setSelectedLm] = useState(null); // landmark whose card is open
+  const showLandmarks = prefs.showLandmarks !== false;
   const routeCenter = useMemo(() => [(route.bounds[0][0] + route.bounds[1][0]) / 2, (route.bounds[0][1] + route.bounds[1][1]) / 2], [route]);
   const sheetRef = useRef(null);
   const stopById = (id) => stops.find((s) => s.id === id);
@@ -199,7 +234,8 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
       .filter((j) => j.gap >= -50)
       .sort((a, b) => a.gap - b.gap);
   }, [shown, firstRide]);
-  const next = approaching[0];
+  // A jeepney on break, refueling or broken down isn't "coming".
+  const next = approaching.find(inService);
 
   // Violet guide on the map: walks (dotted), rides (solid), tricycles (amber).
   const guide = useMemo(() => {
@@ -267,10 +303,32 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   }, [tips, option, from, to]);
 
   function onMapTap(pt) {
+    // First tap away from an open landmark card just closes it.
+    if (selectedLm && !pickTarget) { setSelectedLm(null); return; }
     const place = { kind: 'map', point: pt, label: 'Pinned spot' };
     if (pickTarget === 'to') chooseTo(place);
     else chooseFrom(place);
     setPickTarget(null);
+  }
+
+  // A landmark tapped on the map: open its card (or use it right away when
+  // the rider is choosing a spot on the map).
+  function onLandmarkTap(props) {
+    const l = landmarks.list.find((x) => x.id === props.id);
+    if (!l) return;
+    if (pickTarget) {
+      onChoose(pickTarget, landmarks.place(l));
+      setPickTarget(null);
+      return;
+    }
+    setSelectedLm(l);
+  }
+
+  function goWithLandmark(field) {
+    const place = landmarks.place(selectedLm);
+    setSelectedLm(null);
+    addRecent(place);
+    onChoose(field, place);
   }
 
   function onChoose(field, place) {
@@ -379,6 +437,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
       <MapView
         route={route} jeepneys={shown} pickup={from?.point ?? null} dest={to?.point ?? null} me={me} guide={guide} onPick={onMapTap} onJeepTap={setOpenJeepId}
         activeDirection={activeDirection} visible={visible} onReady={setMap}
+        landmarks={landmarks.list} showLandmarks={showLandmarks} onLandmarkTap={onLandmarkTap} selectedLandmark={selectedLm?.id}
         padding={{ top: 170, bottom: expanded ? 420 : 230 }}
       />
 
@@ -411,8 +470,22 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
           <button className="ai-fab" onClick={() => setChatOpen(true)} aria-label="Ask Sakay AI" title="Ask Sakay AI">
             <AiLogo size={62} />
           </button>
+          <button
+            className={`map-btn landmark-toggle ${showLandmarks ? 'on' : ''}`} aria-pressed={showLandmarks}
+            onClick={() => { setPrefs({ showLandmarks: !showLandmarks }); setSelectedLm(null); }}
+            aria-label={showLandmarks ? 'Hide landmarks' : 'Show landmarks'} title={showLandmarks ? 'Hide landmarks' : 'Show landmarks'}
+          >
+            <Icon name="church" size={20} />
+          </button>
         </MapButtons>
       </div>
+
+      {selectedLm && !searchOpen && (
+        <LandmarkCard
+          landmark={selectedLm} route={route}
+          onGo={() => goWithLandmark('to')} onStart={() => goWithLandmark('from')} onClose={() => setSelectedLm(null)}
+        />
+      )}
 
       <section
         ref={sheetRef}
@@ -573,7 +646,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
             {list.length ? (
               <ul className="jeep-list">
                 {list.map((j) => (
-                  <JeepRow key={j.id} j={j} onOpen={setOpenJeepId} detail={j.gap != null ? `${j.gap <= 100 ? 'Arriving now' : `~${minutes(j.gap)} min · ${(j.gap / 1000).toFixed(1)} km away`} · ${agoText(j.updatedAt)}` : undefined} />
+                  <JeepRow key={j.id} j={j} onOpen={setOpenJeepId} detail={j.gap != null && inService(j) ? `${j.gap <= 100 ? 'Arriving now' : `~${minutes(j.gap)} min · ${(j.gap / 1000).toFixed(1)} km away`} · ${agoText(j.updatedAt)}` : undefined} />
                 ))}
               </ul>
             ) : (

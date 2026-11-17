@@ -4,10 +4,13 @@ import Icon from './Icon.jsx';
 import { ScrollRow } from './ui.jsx';
 import { DIRECTIONS } from '../lib/directions.js';
 import { peso } from '../lib/fare.js';
-import { TAG_LABEL, fmtMeters, fmtMinutes } from '../lib/planner.js';
+import { TAG_LABEL, fmtMeters, fmtMinutes, spotText } from '../lib/planner.js';
+import { landmarks } from '../lib/landmarkData.js';
 
 const MODE_ICON = { walk: 'walk', tricycle: 'tricycle', ride: 'bus', transfer: 'swap' };
 const near = (n, fallback = 'along the route') => (n ? `near ${n.stop.short ?? n.stop.name}` : fallback);
+// "near Capitol (by Jollibee)"
+const spot = (stopNear, point) => spotText(stopNear, point, (p) => landmarks.near(p));
 
 // "₱13.00" or "₱13.00 + ~₱25 tricycle" or "Free".
 export function fareText(option, fareType) {
@@ -102,8 +105,8 @@ export function Timeline({ option, from, to, fareType, firstWalkState, onRetryWa
           sub={`${fmtMeters(s.meters)} · ~${fmtMinutes(s.minutes)} · ${peso(s.fare[ft])}`}
         >
           <span className="ride-ends">
-            <span><i className="end-dot board" />Get on {near(s.boardNear)} <small>(sakayan)</small></span>
-            <span><i className="end-dot alight" />Get off {near(s.alightNear)} <small>(babaan)</small></span>
+            <span><i className="end-dot board" />Get on {spot(s.boardNear, s.board)} <small>(sakayan)</small></span>
+            <span><i className="end-dot alight" />Get off {spot(s.alightNear, s.alight)} <small>(babaan)</small></span>
           </span>
         </StepRow>,
       );

@@ -61,6 +61,61 @@ code, so the map, the AI server and the tests all use the same answers.
 Place search uses **Photon** (photon.komoot.io), a free OpenStreetMap search
 with no key, limited to the area around the route (`src/lib/places.js`).
 
+## Driver tools (Drive tab)
+
+Made for a real driver's day on the route:
+
+- **Driving lock.** When GPS says the jeepney moves faster than 10 km/h, the
+  Drive tab switches to a big, read-only screen (waiting passengers ahead,
+  free seats, jeep ahead and behind), so drivers don't touch the phone while
+  driving (Anti-Distracted Driving Act, RA 10913). A konduktor can unlock it
+  until the next terminal.
+- **Voice announcements** in Tagalog or English, using the phone's own voice:
+  "May 3 na pasahero na naghihintay sa Capitol, 400 metro sa unahan", arrival
+  at a terminal, getting too close to the jeep ahead.
+- **Screen stays on** during a trip (Wake Lock), so GPS keeps running.
+- **Trip status:** Loading at terminal (set by itself at a terminal; riders
+  see "leaves when full"), On break, Refueling, Breakdown, and **Last trip of
+  the day**. Driving off ends Loading/Break/Refueling by itself. Jeepneys on
+  break, refueling or broken down are never shown to riders as "coming".
+- **Jeep ahead / behind** with distance and minutes, to spread trips out
+  instead of bunching.
+- **Seats in one tap:** Wala / Maluwag / Halos puno / Puno, or exact +/−.
+- **Earnings log** (More → Earnings log): kita, krudo, boundary and other
+  costs → take-home, per hour, last 7 days. Trips, km and hours are counted
+  by the Drive tab. Private to the driver.
+- **SOS:** call 911, text an emergency contact the jeepney's location, and
+  alert the admin (5-second countdown to cancel). Admins see alerts in
+  **Admin tools → SOS** with the driver's phone and a map link.
+
+## Landmarks on the map
+
+About 400 named places within 350 m of the route are on the map, from
+OpenStreetMap: churches, plazas, the Capitol, town halls, schools,
+hospitals, markets, terminals, malls, restaurants, stores, banks and more.
+
+- **Iconic** places (Cathedral of Our Lady of Maulawin, St. Mary Magdalene
+  Church, Provincial Capitol, Santa Cruz and Magdalena town halls, public
+  markets, DLTB, Pedro Guevara MNHS, CLA Town Center Mall, plazas) show even
+  when zoomed out. Restaurants, stores and smaller places appear as you zoom in.
+- Tap one for its card: what it is, how close the jeepney passes, and
+  **Go here** / **Start here**. The round church button on the map hides or
+  shows them.
+- They are in the search box (instant, works offline), the trip steps say
+  "get off near Capitol (by Jollibee)", and Sakay AI knows them.
+
+The list is saved in `src/data/landmarks.json`, so phones never ask
+OpenStreetMap for it. Refresh it after OpenStreetMap edits (or after adding
+missing places to OpenStreetMap yourself) with:
+
+```bash
+npm run landmarks              # download again
+npm run landmarks -- --cached  # re-sort the last download (no internet)
+```
+
+Which places count as iconic is set by `ICONIC` in
+`scripts/fetch-landmarks.mjs`.
+
 ## Community tips
 
 Riders share what maps don't know: where people actually wait, route
@@ -73,8 +128,9 @@ instructions).
 
 ## The route
 
-- **To Santa Cruz:** Magdalena Plaza Terminal → F. T. San Luis Ave → National
-  Hwy → DLTB Terminal → Pedro Guevarra Ave (past Pedro Guevara Memorial NHS) →
+- **To Santa Cruz:** Magdalena Plaza Terminal → F. T. San Luis Ave → (near
+  Areza) right, past Pagsanjan Public Market → left up to the National Hwy →
+  DLTB Terminal → Pedro Guevarra Ave (past Pedro Guevara Memorial NHS) →
   Manas St → M. H. del Pilar St → Zulueta St → Pedro Guevarra Ave → Burgos St →
   A. Regidor St → Santa Cruz Plaza
 - **To Magdalena:** Santa Cruz Plaza → Pedro Guevarra Ave → National Hwy →
@@ -279,6 +335,7 @@ terminal; a lowercase `c:` path can confuse the test runner.
 | `src/lib/planner.js` | Trip planner: walk / jeepney / transfer / tricycle options |
 | `src/lib/places.js` | Stop and place search (Photon), names for tapped spots |
 | `src/lib/community.js` | Community tips |
+| `src/lib/landmarks.js` | Landmarks along the route (`src/data/landmarks.json`, `npm run landmarks`) |
 | `src/components/TripSearch.jsx` | The From / To search box |
 | `src/components/Journey.jsx` | Trip option cards and step-by-step timeline |
 | `tests/` | Regression tests (`npm test`) |

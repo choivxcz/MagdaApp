@@ -5,6 +5,7 @@
 import { projectOnRoute } from '../geo.js';
 import { computeFare, FARE_RULES, peso } from '../fare.js';
 import { DIRECTIONS, seatStatus } from '../directions.js';
+import { inService, riderStatusText } from '../tripStatus.js';
 
 export const AVG_SPEED_MPS = 20 / 3.6; // ~20 km/h with stops, same as the map
 const MIN_RIDE_M = 100;
@@ -122,6 +123,8 @@ export function describeJeepneys(route, jeepneys, now = Date.now()) {
         seatsFree: seats.level === 'unknown' ? null : seats.free,
         full: seats.level === 'full',
         seatsText: seats.text,
+        inService: inService(j),
+        status: riderStatusText(j),
       };
     });
 }
@@ -129,7 +132,7 @@ export function describeJeepneys(route, jeepneys, now = Date.now()) {
 // Jeepneys still coming to a pickup point on one leg, nearest first.
 export function jeepsComingTo(route, jeepneys, direction, along, now) {
   return describeJeepneys(route, jeepneys, now)
-    .filter((j) => j.direction === direction)
+    .filter((j) => j.direction === direction && j.inService) // not on break / refueling / broken down
     .map((j) => ({ ...j, gapM: along - j.along }))
     .filter((j) => j.gapM >= -50)
     .sort((a, b) => a.gapM - b.gapM)

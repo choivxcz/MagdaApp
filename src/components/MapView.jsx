@@ -5,7 +5,9 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // into the build and tell MapLibre where it ended up.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { DIRECTIONS, seatStatus } from '../lib/directions.js';
-import { JEEP_SVG, WAITING_SVG } from './Icon.jsx';
+import { JEEP_SVG, WAITING_SVG, PATHS } from './Icon.jsx';
+import { LANDMARK_CATS, landmarksGeoJSON } from '../lib/landmarks.js';
+import { markerTag, inService } from '../lib/tripStatus.js';
 
 maplibregl.setWorkerUrl(workerUrl);
 
@@ -33,14 +35,20 @@ function fillJeepMarker(el, j) {
     const icon = makeEl('jeep-icon');
     icon.innerHTML = JEEP_SVG;
     const label = makeEl('jeep-label');
-    label.append(makeEl('jeep-plate'), makeEl('jeep-seats'));
+    label.append(makeEl('jeep-plate'), makeEl('jeep-seats'), makeEl('jeep-status'));
     el.append(icon, label);
   }
-  const [plateEl, seatsEl] = el.lastChild.children;
+  const [plateEl, seatsEl, statusEl] = el.lastChild.children;
   plateEl.textContent = j.plate;
   seatsEl.hidden = seats.level === 'unknown';
   seatsEl.className = `jeep-seats seats-${seats.level}`;
   seatsEl.textContent = seats.level === 'full' ? 'Full' : `${seats.free}`;
+  // "Loading", "Break", "Breakdown", "Last trip"...
+  const tag = markerTag(j);
+  statusEl.hidden = !tag;
+  statusEl.textContent = tag ?? '';
+  statusEl.className = `jeep-status ${j.tripStatus ?? 'on_trip'}`;
+  el.classList.toggle('out-of-service', !inService(j));
 }
 
 // Shows the route, stops, jeepneys, the rider's pickup and the phone's own position.
@@ -104,6 +112,87 @@ function outsideMask(route) {
   };
 }
 
+// ---- Landmarks layer -------------------------------------------------------
+// Round colored icons with the place name. Iconic places (rank 0) show even
+// zoomed out; big ones from zoom 13.5; restaurants, shops and the rest only
+// when zoomed in. MapLibre hides labels that would overlap.
+const LM_LAYERS = ['landmarks-r3', 'landmarks-r2', 'landmarks-r1', 'landmarks-r0'];
+const BASE_POI_LAYERS = ['poi_r1', 'poi_r7', 'poi_r20', 'poi_transit'];
+
+function iconSvg(color, path) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 28 28">`
+    + `<circle cx="14" cy="14" r="12" fill="${color}" stroke="#fff" stroke-width="2.4"/>`
+    + `<g transform="translate(7 7) scale(0.5833)"><path d="${path}" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g></svg>`;
+}
+
+async function addLandmarkImages(map) {
+  await Promise.all(Object.entries(LANDMARK_CATS).map(async ([cat, c]) => {
+    const id = `lm-${cat}`;
+    if (map.hasImage(id)) return;
+    const img = new Image(56, 56);
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(iconSvg(c.color, PATHS[c.icon] ?? PATHS.pin))}`;
+    await img.decode();
+    if (!map.hasImage(id)) map.addImage(id, img, { pixelRatio: 2 });
+  }));
+}
+
+async function addLandmarkLayers(map, list, show) {
+  try {
+    await addLandmarkImages(map);
+  } catch {
+    return; // icons couldn't be drawn: the map works without landmarks
+  }
+  if (!map.getStyle() || map.getSource('landmarks')) return;
+  map.addSource('landmarks', { type: 'geojson', data: landmarksGeoJSON(list) });
+  map.addSource('landmark-selected', { type: 'geojson', data: EMPTY });
+  const before = map.getLayer('guide-trike-casing') ? 'guide-trike-casing' : undefined;
+  map.addLayer({
+    id: 'landmark-selected', type: 'circle', source: 'landmark-selected',
+    paint: { 'circle-radius': 20, 'circle-color': '#c84b0c', 'circle-opacity': 0.18, 'circle-stroke-color': '#c84b0c', 'circle-stroke-width': 2.5 },
+  }, before);
+  const text = { 'text-color': '#1f2124', 'text-halo-color': '#ffffff', 'text-halo-width': 1.6 };
+  const levels = [
+    // rank, minzoom, icon size, label from zoom, font, label size
+    [3, 16.2, 0.72, 17, 'Noto Sans Regular', 11],
+    [2, 15, 0.78, 16, 'Noto Sans Regular', 11.5],
+    [1, 13.5, 0.85, 14.8, 'Noto Sans Regular', 12],
+    [0, 11, 1.05, 11, 'Noto Sans Bold', 12.5],
+  ];
+  for (const [rank, minzoom, size, labelZoom, font, textSize] of levels) {
+    map.addLayer({
+      id: `landmarks-r${rank}`, type: 'symbol', source: 'landmarks', minzoom,
+      filter: ['==', ['get', 'rank'], rank],
+      layout: {
+        visibility: show ? 'visible' : 'none',
+        'icon-image': ['get', 'img'],
+        'icon-size': ['interpolate', ['linear'], ['zoom'], minzoom, size * 0.85, 17, size * 1.1],
+        'text-field': labelZoom <= minzoom ? ['get', 'name'] : ['step', ['zoom'], '', labelZoom, ['get', 'name']],
+        'text-font': [font],
+        'text-size': textSize,
+        'text-offset': [0, 1.15],
+        'text-anchor': 'top',
+        'text-max-width': 9,
+        'text-optional': true,
+        'symbol-sort-key': rank,
+      },
+      paint: rank === 0 ? { ...text, 'text-color': '#7a2e05' } : text,
+    }, before);
+  }
+  setBasePois(map, !show);
+}
+
+function setBasePois(map, visible) {
+  for (const id of BASE_POI_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+}
+
+// The landmark under a tap (with a little room for fingers), as its properties.
+function landmarkAt(map, point) {
+  const layers = LM_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+  if (!layers.length) return null;
+  const f = map.queryRenderedFeatures([[point.x - 12, point.y - 12], [point.x + 12, point.y + 12]], { layers })[0];
+  return f ? { ...f.properties, coord: f.geometry.coordinates } : null;
+}
+
 function keepOnRoute(map, route) {
   const [[x1, y1], [x2, y2]] = centerBox(route);
   const c = map.getCenter();
@@ -116,7 +205,13 @@ function keepOnRoute(map, route) {
 //   kind is 'board' (sakayan), 'alight' (babaan) or 'transfer'.
 // dest: the rider's destination point (red pin).
 // waiting: [{ point, people, dim }] passengers waiting for a ride (driver view).
-export default function MapView({ route, jeepneys = [], pickup, dest, me, guide, waiting, onPick, onJeepTap, activeDirection, visible = true, padding, onReady }) {
+// landmarks: places along the route (landmarks.js); showLandmarks turns them
+// on/off; onLandmarkTap(landmark) runs when one is tapped; selectedLandmark
+// (id) gets a highlight ring.
+export default function MapView({
+  route, jeepneys = [], pickup, dest, me, guide, waiting, onPick, onJeepTap, activeDirection, visible = true, padding, onReady,
+  landmarks, showLandmarks = true, onLandmarkTap, selectedLandmark,
+}) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const jeepMarkers = useRef(new Map());
@@ -135,6 +230,12 @@ export default function MapView({ route, jeepneys = [], pickup, dest, me, guide,
   activeRef.current = activeDirection;
   const paddingRef = useRef(padding);
   paddingRef.current = padding;
+  const landmarksRef = useRef(landmarks);
+  landmarksRef.current = landmarks;
+  const showLandmarksRef = useRef(showLandmarks);
+  showLandmarksRef.current = showLandmarks;
+  const onLandmarkTapRef = useRef(onLandmarkTap);
+  onLandmarkTapRef.current = onLandmarkTap;
   const fitted = useRef(false);
 
   useEffect(() => {
@@ -173,6 +274,7 @@ export default function MapView({ route, jeepneys = [], pickup, dest, me, guide,
           paint: { 'line-color': DIRECTIONS[direction].color, 'line-width': 5, 'line-offset': 3 },
         });
       }
+      if (landmarksRef.current?.length) addLandmarkLayers(map, landmarksRef.current, showLandmarksRef.current);
       map.addSource('guide-ride', { type: 'geojson', data: EMPTY });
       map.addSource('guide-walk', { type: 'geojson', data: EMPTY });
       map.addSource('guide-trike', { type: 'geojson', data: EMPTY });
@@ -198,7 +300,13 @@ export default function MapView({ route, jeepneys = [], pickup, dest, me, guide,
     map.on('click', (e) => {
       // A tap on a jeepney opens its driver, it doesn't move the pickup pin.
       if (e.originalEvent?.target?.closest?.('.jeep-marker')) return;
+      // A tap on (or right next to) a landmark opens its card.
+      const lm = landmarkAt(map, e.point);
+      if (lm) { onLandmarkTapRef.current?.(lm); return; }
       onPickRef.current?.([e.lngLat.lng, e.lngLat.lat]);
+    });
+    map.on('mousemove', (e) => {
+      map.getCanvas().style.cursor = landmarkAt(map, e.point) ? 'pointer' : '';
     });
     // Stay on the route while panning, and re-check the zoom-out limit when
     // the map is shown, the phone is rotated or the window is resized.
@@ -208,6 +316,7 @@ export default function MapView({ route, jeepneys = [], pickup, dest, me, guide,
     // A map built inside a hidden tab has no size yet; fit it when first shown.
     fitted.current = containerRef.current.clientHeight > 0;
     mapRef.current = map;
+    if (import.meta.env.DEV) window.__sakayMap = map; // for testing in the browser console
     onReady?.(map);
 
     return () => {
@@ -301,6 +410,23 @@ export default function MapView({ route, jeepneys = [], pickup, dest, me, guide,
   useEffect(() => {
     if (mapRef.current) applyActive(mapRef.current, activeDirection);
   }, [activeDirection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Landmarks on/off (the map's own small POIs come back when ours are off).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map?.getSource('landmarks')) return;
+    for (const id of LM_LAYERS) map.setLayoutProperty(id, 'visibility', showLandmarks ? 'visible' : 'none');
+    setBasePois(map, !showLandmarks);
+  }, [showLandmarks]);
+
+  // Ring around the landmark whose card is open.
+  useEffect(() => {
+    const map = mapRef.current;
+    const src = map?.getSource('landmark-selected');
+    if (!src) return;
+    const l = selectedLandmark && landmarks?.find((x) => x.id === selectedLandmark);
+    src.setData(l ? { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: l.coord } } : EMPTY);
+  }, [selectedLandmark, landmarks]);
 
   useEffect(() => {
     const map = mapRef.current;

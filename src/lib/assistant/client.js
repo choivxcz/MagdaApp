@@ -17,6 +17,8 @@ const snapshot = (jeepneys) => jeepneys.map((j) => ({
   seatsTotal: j.seatsTotal,
   seatsTaken: j.seatsTaken,
   updatedAt: j.updatedAt instanceof Date ? j.updatedAt.toISOString() : j.updatedAt,
+  tripStatus: j.tripStatus,
+  lastTrip: j.lastTrip,
 }));
 
 // The most useful community tips, short, for the AI to relay.

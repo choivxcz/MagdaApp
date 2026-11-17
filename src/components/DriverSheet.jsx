@@ -4,6 +4,7 @@ import { Avatar } from './ui.jsx';
 import { fetchDriverCard } from '../lib/photos.js';
 import { isDemo } from '../lib/supabase.js';
 import { DIRECTIONS, seatStatus } from '../lib/directions.js';
+import { riderStatusText, statusOf } from '../lib/tripStatus.js';
 
 function agoText(date) {
   const s = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
@@ -67,6 +68,9 @@ export default function DriverSheet({ jeepId, jeep, onClose }) {
 
           {error && <p className="warn">Couldn’t load the driver’s profile: {error}</p>}
 
+          {jeep && riderStatusText(jeep) && (
+            <p className={`driver-status ${jeep.tripStatus ?? ''}`}><Icon name={statusOf(jeep).icon} size={16} /> {riderStatusText(jeep)}</p>
+          )}
           {jeep ? (
             <div className="kv-grid">
               <span><small>Plate</small><b>{plate}</b></span>

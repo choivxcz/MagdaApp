@@ -12,12 +12,20 @@ import {
 } from '../src/lib/assistant/knowledge.js';
 import { planJourneys, networkFromRoutes, describeOption, TAG_LABEL } from '../src/lib/planner.js';
 import { searchPlaces, serviceBox, inBox, stopPlace } from '../src/lib/places.js';
+import { makeLandmarks } from '../src/lib/landmarks.js';
+import { STATUS_KEYS } from '../src/lib/tripStatus.js';
 
 const route = prepareRoute(JSON.parse(readFileSync(join(process.cwd(), 'src/data/route-magdalena-santa-cruz.json'), 'utf8')));
 const network = networkFromRoutes([route]);
 const BOX = serviceBox(route);
 const CENTER = [(route.bounds[0][0] + route.bounds[1][0]) / 2, (route.bounds[0][1] + route.bounds[1][1]) / 2];
 const TIP_CATEGORIES = ['route_change', 'boarding', 'fare', 'terminal', 'road', 'other'];
+const landmarks = makeLandmarks(JSON.parse(readFileSync(join(process.cwd(), 'src/data/landmarks.json'), 'utf8')), route);
+// The big ones, for the system prompt: "Cathedral ... (church, near Sta. Cruz Plaza)".
+const LANDMARKS_TEXT = landmarks.list
+  .filter((l) => l.rank <= 1)
+  .map((l) => `${l.name} (${landmarks.place(l).sub.replace(/ · /g, ', ').toLowerCase()})`)
+  .join('; ');
 
 // Free-tier models: if the first is busy or over its daily limit, try the next.
 const DEFAULT_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
@@ -108,6 +116,7 @@ const jeepOut = (j) => ({
   free_seats: j.seatsFree,
   full: j.full,
   ...(j.etaMinutes != null ? { arrives_in_minutes: j.etaMinutes } : {}),
+  ...(j.status ? { status: j.status } : {}), // e.g. loading at the terminal, on break, last trip
 });
 
 const HERE = ['my location', 'location', 'here', 'current location', 'dito', 'ako', 'nandito', 'where i am', 'map start', 'start'];
@@ -127,6 +136,11 @@ async function resolvePlace(text, ctx) {
   }
   const stop = findStop(route, text);
   if (stop) return { place: stopPlace(stop) };
+  // A landmark along the route whose name really matches ("cathedral", "jollibee").
+  const lm = landmarks.match(text, 1)[0];
+  if (lm && (normalize(lm.label).includes(t) || t.includes(normalize(lm.label)))) {
+    return { place: lm, searched: true, landmark: true };
+  }
   try {
     const [hit] = await searchPlaces(text, { box: BOX, near: CENTER, limit: 1, headers: { 'User-Agent': 'SakayLaguna/1.0 (commuter app)' } });
     if (hit) return { place: hit, searched: true };
@@ -170,7 +184,7 @@ async function journey(args, ctx, show) {
       jeepney_fare_regular_php: o.fare.regular,
       jeepney_fare_student_senior_pwd_php: o.fare.discounted,
       ...(o.fare.tricycle ? { tricycle_fare_estimate_php: o.fare.tricycle, tricycle_note: 'Rough estimate; each town sets tricycle fares.' } : {}),
-      steps: describeOption(o, { fareType: ctx.fareType, dirLabel, toLabel: b.place.label }),
+      steps: describeOption(o, { fareType: ctx.fareType, dirLabel, toLabel: b.place.label, byLandmark: (p) => landmarks.near(p) }),
     })),
     next_jeepneys_at_first_boarding: first ? jeepsComingTo(route, ctx.jeepneys, first.direction, first.fromAlong).slice(0, 3).map(jeepOut) : [],
   };
@@ -239,9 +253,12 @@ ROUTE AND STOPS (km from the start of each direction):
 ${stopsText(route)}
 Jeepneys go back and forth; Santa Cruz Plaza and Magdalena Plaza Terminal are the turnarounds.
 
+MAJOR LANDMARKS ALONG THE ROUTE (from OpenStreetMap; plan_journey knows ~400 more, including restaurants and shops):
+${LANDMARKS_TEXT}
+
 FARE RULES: ${fareRulesText()} Tricycles are not covered by LTFRB; each town sets their fares, so tricycle prices from tools are rough estimates.
 ${tips}
-APP HELP: Tabs are Map (live jeepneys, choose From/To to see fare and arrival), Routes (stops, streets, fare per stop), Saved (saved trips, needs an account), Drive (approved drivers only), More (profile, fare guide, Report a ride, Emergency 911, Preferences for fare type and theme, account). Tapping a jeepney on the map shows its driver, plate and seats. Drivers apply in More.
+APP HELP: Tabs are Map (live jeepneys, choose From/To to see fare and arrival), Routes (stops, streets, fare per stop), Saved (saved trips, needs an account), Drive (approved drivers only), More (profile, fare guide, Report a ride, Emergency 911, Preferences for fare type and theme, account). Tapping a jeepney on the map shows its driver, plate and seats. Drivers apply in More. Live jeepneys may have a status (loading at the terminal and leaving when full, on break, refueling, broken down, or on their last trip of the day); mention it when it matters, and never count a jeepney on break, refueling or broken down as coming.
 
 RULES:
 - ALWAYS call a tool for fares, ride times, arrival times, seats or which jeepneys are out. Never compute or guess these numbers yourself.
@@ -364,6 +381,8 @@ function readInput(body) {
     lng: num(j.lng),
     seatsTotal: num(j.seatsTotal),
     seatsTaken: num(j.seatsTaken),
+    tripStatus: STATUS_KEYS.includes(j.tripStatus) ? j.tripStatus : 'on_trip',
+    lastTrip: !!j.lastTrip,
     updatedAt: j.updatedAt && !Number.isNaN(Date.parse(j.updatedAt)) ? j.updatedAt : null,
   }));
   const stopId = (id) => (route.stops.some((s) => s.id === id) ? id : null);

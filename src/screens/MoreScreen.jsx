@@ -11,6 +11,7 @@ import { DIRECTIONS, DIRECTION_KEYS } from '../lib/directions.js';
 
 import DriverApplyScreen from './DriverApplyScreen.jsx';
 import AdminScreen from './AdminScreen.jsx';
+import EarningsScreen from './EarningsScreen.jsx';
 
 const APP_VERSION = '0.6.0';
 
@@ -24,6 +25,7 @@ export default function MoreScreen({ route, sub }) {
     case 'privacy': return <Privacy />;
     case 'driver': return <DriverApplyScreen />;
     case 'admin': return <AdminScreen />;
+    case 'earnings': return <EarningsScreen />;
     default: return <MoreMenu />;
   }
 }
@@ -71,13 +73,16 @@ function MoreMenu() {
 
         {isAdmin && (
           <MenuGroup title="Admin">
-            <MenuRow icon="key" title="Admin tools" sub="Approve drivers, review ride reports" onClick={() => navigate('more/admin')} />
+            <MenuRow icon="key" title="Admin tools" sub="Drivers, ride reports, tips, SOS alerts" onClick={() => navigate('more/admin')} />
           </MenuGroup>
         )}
 
         <MenuGroup title="Drive with us">
           {driver ? (
-            <MenuRow icon="drive" title="Driver mode" sub={`${driver.plate} · ${driver.seat_capacity} seats`} onClick={() => navigate('drive')} />
+            <>
+              <MenuRow icon="drive" title="Driver mode" sub={`${driver.plate} · ${driver.seat_capacity} seats`} onClick={() => navigate('drive')} />
+              <MenuRow icon="fare" title="Earnings log" sub="Kita, krudo, boundary: your take-home each day" onClick={() => navigate('more/earnings')} />
+            </>
           ) : (
             <MenuRow
               icon="drive"
@@ -436,6 +441,9 @@ function Privacy() {
           <li><b>“I’m waiting here” (optional):</b> the spot where you wait, your direction and how many you are. On-duty drivers see it without your name. It ends after 20 minutes or when you cancel, and is deleted soon after.</li>
           <li><b>Ride reports:</b> what you report, linked to your account so we can follow up.</li>
           <li><b>Drivers only:</b> the jeepney’s location and passenger count during a trip. Only the latest position is kept; it is hidden when the trip ends. Phone, license and franchise numbers are seen only by the admin.</li>
+          <li><b>Drivers’ trip status</b> (loading at terminal, break, refueling, breakdown, last trip) is shown to riders during a trip.</li>
+          <li><b>Drivers’ earnings log:</b> collected fares, diesel, boundary and other costs you enter. Only you can see it, not your operator or the admin. Trips, km and hours are counted on your phone.</li>
+          <li><b>SOS:</b> when a driver presses SOS, the admin sees the driver’s name, plate, phone and location. The emergency contact number is saved on the driver’s phone only.</li>
         </ul>
         <h3>What we don’t do</h3>
         <ul>
@@ -452,6 +460,7 @@ function Privacy() {
           <li>Fares estimated from the LTFRB jeepney fare matrix.</li>
           <li>Route traced from the project team’s description of the actual jeepney route.</li>
           <li>Place search by Photon (komoot), using OpenStreetMap data.</li>
+          <li>Landmarks on the map © OpenStreetMap contributors.</li>
           <li>Tricycle fares are rough estimates; each town sets its own.</li>
         </ul>
         <p className="fineprint">Services used: Supabase (accounts, database and photo storage), FOSSGIS OpenStreetMap routing and OSRM (walking and road directions), Photon by komoot (place search), Google Gemini (Ask AI), Vercel (website).</p>

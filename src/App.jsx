@@ -64,7 +64,8 @@ function Shell() {
   ];
   const current = tabs.some((t) => t.id === tab) ? tab : 'map';
 
-  const live = useJeepneys(route, !gate && (current === 'map' || current === 'routes'));
+  // The Drive tab uses it too, for the gap to the jeepneys ahead and behind.
+  const live = useJeepneys(route, !gate && (current === 'map' || current === 'routes' || current === 'drive'));
 
   const openOnMap = useCallback((request) => {
     setMapRequest({ ...request, at: Date.now() });
@@ -93,7 +94,7 @@ function Shell() {
         </div>
         {driver && user && (
           <div className="screen" hidden={current !== 'drive'}>
-            <DriveScreen key={user.id} route={route} userId={user.id} driver={driver} visible={current === 'drive'} onTripChange={setDriverOnTrip} />
+            <DriveScreen key={user.id} route={route} userId={user.id} driver={driver} visible={current === 'drive'} jeepneys={live.jeepneys} onTripChange={setDriverOnTrip} />
           </div>
         )}
         {current === 'routes' && <RoutesScreen route={route} jeepneys={live.jeepneys} sub={sub} openOnMap={openOnMap} />}

@@ -33,6 +33,8 @@ export function demoJeepneys(route) {
       lat,
       seatsTotal: j.seats,
       seatsTaken,
+      tripStatus: 'on_trip',
+      lastTrip: i === 3, // shows the "Last trip" tag
       updatedAt: new Date(),
     };
   });

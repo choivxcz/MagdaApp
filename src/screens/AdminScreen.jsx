@@ -5,6 +5,7 @@ import Icon from '../components/Icon.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { adminListDrivers, adminReviewDriver, adminListReports, adminSetReportStatus } from '../lib/account.js';
 import { fetchTips, adminSetTipStatus, deleteTip } from '../lib/community.js';
+import { adminListSos, adminResolveSos, mapsLink } from '../lib/driverData.js';
 import { TipCard } from './CommunityScreen.jsx';
 import routeData from '../data/route-magdalena-santa-cruz.json';
 
@@ -35,8 +36,8 @@ export default function AdminScreen() {
     <div className="page">
       <PageHeader title="Admin tools" back="more" />
       <div className="page-body">
-        <Segmented value={tab} onChange={setTab} options={[['drivers', 'Drivers'], ['reports', 'Ride reports'], ['tips', 'Tips']]} />
-        {tab === 'drivers' ? <Drivers onChange={reloadMe} /> : tab === 'reports' ? <Reports /> : <Tips />}
+        <Segmented value={tab} onChange={setTab} options={[['drivers', 'Drivers'], ['reports', 'Reports'], ['tips', 'Tips'], ['sos', 'SOS']]} />
+        {tab === 'drivers' ? <Drivers onChange={reloadMe} /> : tab === 'reports' ? <Reports /> : tab === 'tips' ? <Tips /> : <SosAlerts />}
       </div>
     </div>
   );
@@ -261,6 +262,79 @@ function Tips() {
           {shown.map((t) => <TipCard key={t.id} tip={t} route={routeData} user={null} isAdmin onVote={() => {}} onDelete={remove} onHide={hide} />)}
         </div>
       )}
+    </>
+  );
+}
+
+// Emergency alerts from drivers (SOS button on the Drive tab). Checked
+// every 20 seconds while this page is open.
+function SosAlerts() {
+  const [rows, setRows] = useState(null);
+  const [filter, setFilter] = useState('open');
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      setRows(await adminListSos());
+      setError('');
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
+  useEffect(() => {
+    load();
+    const t = setInterval(() => { if (!document.hidden) load(); }, 20000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  async function setStatus(a, status) {
+    try {
+      await adminResolveSos(a.id, status);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  const shown = (rows ?? []).filter((a) => a.status === filter);
+  const open = (rows ?? []).filter((a) => a.status === 'open').length;
+
+  return (
+    <>
+      <div className="filter-chips">
+        <button className={filter === 'open' ? 'on' : ''} onClick={() => setFilter('open')}>Open <span>{open}</span></button>
+        <button className={filter === 'resolved' ? 'on' : ''} onClick={() => setFilter('resolved')}>Resolved <span>{(rows?.length ?? 0) - open}</span></button>
+        <button className="icon-btn small refresh" onClick={load} aria-label="Refresh"><Icon name="refresh" size={16} /></button>
+      </div>
+      {error && <p className="warn">{error}</p>}
+      {rows === null ? (
+        <p className="hint">Loading…</p>
+      ) : shown.length === 0 ? (
+        <p className="hint center">{filter === 'open' ? 'No open SOS alerts.' : 'No resolved alerts yet.'}</p>
+      ) : (
+        shown.map((a) => {
+          const point = a.lat != null && a.lng != null ? [a.lng, a.lat] : null;
+          return (
+            <div key={a.id} className={`card admin-card ${a.status === 'open' ? 'sos-alert' : ''}`}>
+              <div className="admin-card-head">
+                <span className="tile sos-tile">SOS</span>
+                <div className="admin-card-title">
+                  <b>{a.full_name ?? 'Driver'} · {a.plate ?? 'no plate'}</b>
+                  <span className="sub">{when(a.created_at)}{a.resolved_at ? ` · resolved ${when(a.resolved_at)}` : ''}</span>
+                </div>
+              </div>
+              <div className="admin-actions">
+                {a.phone && <a className="btn primary" href={`tel:${a.phone}`}><Icon name="phone" size={16} /> Call {a.phone}</a>}
+                {point ? <a className="btn" href={mapsLink(point)} target="_blank" rel="noreferrer"><Icon name="pin" size={16} /> Location</a> : <span className="hint">No location sent.</span>}
+                {a.status === 'open'
+                  ? <button className="btn" onClick={() => setStatus(a, 'resolved')}>Mark resolved</button>
+                  : <button className="btn" onClick={() => setStatus(a, 'open')}>Reopen</button>}
+              </div>
+            </div>
+          );
+        })
+      )}
+      <p className="fineprint">If a driver is in danger, call 911 first.</p>
     </>
   );
 }

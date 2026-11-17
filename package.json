@@ -16,6 +16,7 @@
     "check:links": "node scripts/check-email-links.mjs",
     "admin:add": "node scripts/add-admin.mjs",
     "check:email": "node scripts/check-email.mjs",
+    "landmarks": "node scripts/fetch-landmarks.mjs",
     "deploy:web": "vercel deploy --prod --yes"
   },
   "dependencies": {

@@ -368,14 +368,27 @@ export const fmtMinutes = (min) => {
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
 };
 
+// "near Capitol (by Jollibee)": the stop, plus a landmark right at the spot
+// when byLandmark(point) knows one. Riders look for buildings, not km marks.
+export function spotText(stopNear, point, byLandmark) {
+  const stop = stopNear ? stopNear.stop.short ?? stopNear.stop.name : null;
+  const lm = byLandmark?.(point);
+  // Skip a landmark that is just the stop itself ("DLTB Terminal" / "DLTBCo. Santa Cruz Terminal").
+  const words = (x) => x.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(' ').filter((w) => w.length >= 4);
+  const sameAsStop = stop && lm && words(stop).some((w) => lm.name.toLowerCase().includes(w));
+  const by = lm && !sameAsStop ? lm.name : null;
+  if (stop && by) return `near ${stop} (by ${by})`;
+  if (stop) return `near ${stop}`;
+  return by ? `by ${by}` : 'along the route';
+}
+
 // Plain-language steps, for the AI and for sharing.
-export function describeOption(option, { fareType = 'regular', dirLabel = (d) => d, toLabel = 'your destination' } = {}) {
-  const near = (n) => (n ? `near ${n.stop.short ?? n.stop.name}` : 'along the route');
+export function describeOption(option, { fareType = 'regular', dirLabel = (d) => d, toLabel = 'your destination', byLandmark } = {}) {
   return option.steps.map((s) => {
     const dest = s.role === 'first' ? 'the jeepney route' : toLabel;
     if (s.type === 'walk') return `Walk ${fmtMeters(s.meters)} (${fmtMinutes(s.minutes)}) to ${dest}`;
     if (s.type === 'tricycle') return `Tricycle ${fmtMeters(s.meters)} (${fmtMinutes(s.minutes)}, about ₱${Math.round(s.fare[fareType])}) to ${dest}`;
     if (s.type === 'transfer') return `Get off and transfer${s.meters > 0 ? ` (walk ${fmtMeters(s.meters)})` : ''}, then wait for the next jeepney`;
-    return `Ride the jeepney ${dirLabel(s.direction)} from ${near(s.boardNear)}, ${fmtMeters(s.meters)} (~${fmtMinutes(s.minutes)}, ₱${s.fare[fareType].toFixed(2)}), get off ${near(s.alightNear)}`;
+    return `Ride the jeepney ${dirLabel(s.direction)} from ${spotText(s.boardNear, s.board, byLandmark)}, ${fmtMeters(s.meters)} (~${fmtMinutes(s.minutes)}, ₱${s.fare[fareType].toFixed(2)}), get off ${spotText(s.alightNear, s.alight, byLandmark)}`;
   });
 }

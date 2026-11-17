@@ -1036,3 +1036,164 @@ input.switch {
 .danger-text { color: var(--danger); }
 .body-text.muted { color: var(--muted); }
 .btn .icon { vertical-align: -3px; }
+
+/* =====================================================================
+   Landmarks on the map
+   ===================================================================== */
+.landmark-card {
+  position: absolute; left: 12px; right: 70px; z-index: 5; bottom: calc(var(--sheet-h) + 12px);
+  max-width: 420px; display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  background: var(--card); color: var(--text); border-radius: 16px; box-shadow: var(--shadow);
+  transition: bottom 0.25s;
+}
+.map-screen.sheet-expanded .landmark-card { display: none; }
+.landmark-card-head { display: flex; align-items: flex-start; gap: 10px; }
+.landmark-card-head > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.landmark-card-head b { font-size: 15.5px; line-height: 1.3; }
+.landmark-card-head .sub { font-size: 12.5px; color: var(--muted); }
+.landmark-icon {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center;
+  color: #fff; border: 2px solid #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+}
+.landmark-actions { display: flex; gap: 8px; }
+.landmark-actions .btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.map-buttons > .map-btn.landmark-toggle { color: var(--muted); }
+.map-buttons > .map-btn.landmark-toggle.on { color: var(--on-brand); background: var(--brand); }
+
+/* Landmark rows in the search list use the landmark's map color. */
+.place-icon.lm { color: #fff; }
+.place-icon.lm-church { background: #92400e; }
+.place-icon.lm-government { background: #1d3557; }
+.place-icon.lm-school { background: #1e40af; }
+.place-icon.lm-hospital { background: #dc2626; }
+.place-icon.lm-health { background: #e11d48; }
+.place-icon.lm-mall { background: #be185d; }
+.place-icon.lm-market { background: #c2410c; }
+.place-icon.lm-terminal { background: #374151; }
+.place-icon.lm-park { background: #15803d; }
+.place-icon.lm-monument { background: #57534e; }
+.place-icon.lm-food { background: #ea580c; }
+.place-icon.lm-shop { background: #0e7490; }
+.place-icon.lm-bank { background: #4d7c0f; }
+.place-icon.lm-police { background: #1e3a8a; }
+.place-icon.lm-fuel { background: #6b7280; }
+.place-icon.lm-hotel { background: #7e22ce; }
+
+/* =====================================================================
+   Driver tools: status, gaps, driving lock, SOS, earnings
+   ===================================================================== */
+.seat-quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.seat-quick .btn { padding: 9px 4px; white-space: nowrap; }
+.seat-quick .btn.on { background: var(--brand); color: var(--on-brand); border-color: transparent; }
+
+.trip-status { display: flex; flex-direction: column; gap: 8px; }
+.trip-status .label small { font-weight: 500; color: var(--faint); }
+.status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.status-btn {
+  display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 12px; cursor: pointer; text-align: left;
+  border: 1.5px solid var(--border); background: var(--card); color: var(--text); font-size: 13.5px; font-weight: 650;
+}
+.status-btn span { display: flex; flex-direction: column; line-height: 1.2; }
+.status-btn small { font-weight: 500; color: var(--muted); font-size: 11.5px; }
+.status-btn .icon { color: var(--muted); flex-shrink: 0; }
+.status-btn:disabled { opacity: 0.5; cursor: default; }
+.status-btn.on { border-color: var(--brand); background: var(--brand-soft); }
+.status-btn.on .icon { color: var(--brand); }
+.status-btn.breakdown.on { border-color: var(--danger); background: var(--danger-soft); }
+.status-btn.breakdown.on .icon { color: var(--danger); }
+.switch-label.last-trip { justify-content: space-between; font-weight: 500; color: var(--text); font-size: 13.5px; }
+.switch-label.last-trip span { flex: 1; }
+
+.gaps { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 14px; background: var(--surface); }
+.gap-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 14px; }
+.gap-row.warn b { color: var(--warn-text); }
+.gaps .fineprint { margin: 0; }
+
+.today-card {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border-radius: 14px; cursor: pointer; text-align: left;
+  border: 1px solid var(--border); background: var(--card); color: var(--text);
+}
+.voice-setting { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+
+/* SOS */
+.sos-float {
+  position: absolute; z-index: 3; top: calc(env(safe-area-inset-top) + 14px); left: 14px; width: 56px; height: 56px; border-radius: 50%;
+  border: 3px solid #fff; background: #d93025; color: #fff; font-weight: 900; font-size: 15px; letter-spacing: 0.04em; cursor: pointer;
+  box-shadow: 0 2px 10px rgb(217 48 37 / 0.45);
+}
+.sos-mini { margin-left: auto; padding: 8px 14px; border-radius: 999px; border: 0; background: #d93025; color: #fff; font-weight: 900; cursor: pointer; }
+.sos-backdrop { z-index: 30; }
+.sos-sheet {
+  width: 100%; max-width: 480px; background: var(--card); color: var(--text); border-radius: 22px 22px 0 0;
+  padding: 16px 16px calc(env(safe-area-inset-bottom) + 18px); display: flex; flex-direction: column; gap: 12px;
+}
+@media (min-width: 560px) { .sos-sheet { border-radius: 22px; } }
+.sos-head { display: flex; align-items: center; gap: 12px; }
+.sos-head > div { flex: 1; display: flex; flex-direction: column; }
+.sos-head b { font-size: 18px; }
+.sos-badge { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: #d93025; color: #fff; font-weight: 900; }
+.sos-big {
+  display: flex; align-items: center; justify-content: center; gap: 10px; padding: 18px; border-radius: 16px;
+  background: #d93025; color: #fff; font-size: 20px; font-weight: 800; text-decoration: none;
+}
+.sos-row { display: flex; align-items: center; gap: 10px; }
+.sos-text { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+.sos-contact { display: flex; flex-direction: column; gap: 8px; }
+.sos-status { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-text); font-size: 14px; }
+.sos-status.ok { background: var(--ok-bg); color: var(--ok-text); }
+.sos-status .icon { vertical-align: -3px; }
+
+/* Driving lock: replaces the driver's panel while the jeepney moves. */
+.drive-lock {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; display: flex; flex-direction: column; gap: 14px;
+  padding: 18px 16px calc(env(safe-area-inset-bottom) + 16px); background: #13263f; color: #fff;
+  border-radius: 22px 22px 0 0; box-shadow: var(--shadow-lg);
+}
+.drive-lock > * { max-width: 600px; width: 100%; margin: 0 auto; }
+.drive-lock-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.drive-lock-badge { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 15px; color: #fdba74; }
+.drive-lock-status { font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: rgb(255 255 255 / 0.14); }
+.drive-lock-label { display: block; font-size: 13px; font-weight: 600; color: #b9c6d8; text-transform: uppercase; letter-spacing: 0.04em; }
+.drive-lock-big { display: block; font-size: 34px; font-weight: 850; line-height: 1.15; letter-spacing: -0.01em; }
+.drive-lock-big small { font-size: 22px; font-weight: 700; color: #fdba74; }
+.drive-lock-big.muted { color: #8fa0b8; }
+.drive-lock-sub { font-size: 15px; color: #d6deea; }
+.drive-lock-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.drive-lock-grid > div { padding: 10px; border-radius: 14px; background: rgb(255 255 255 / 0.08); }
+.drive-lock-grid b { display: block; font-size: 20px; font-weight: 800; margin-top: 2px; }
+.drive-lock-grid b.full { color: #fca5a5; }
+.drive-lock-grid b.warn { color: #fcd34d; }
+.drive-lock-note { margin: 0; font-size: 13px; color: #b9c6d8; }
+.drive-lock-note .link-btn { color: #fdba74; }
+
+/* Rider side: jeepney status */
+.jeep-label .jeep-status { padding: 1px 6px; border-radius: 999px; font-size: 10px; background: #fef3d6; color: #8a5a00; }
+.jeep-label .jeep-status.breakdown { background: #fce8e6; color: #b3261e; }
+.jeep-label .jeep-status.loading { background: #e7eef8; color: #1d3557; }
+.jeep-marker.out-of-service .jeep-icon { filter: grayscale(1); opacity: 0.75; }
+.jeep-row-status { font-size: 12.5px; font-weight: 700; color: var(--warn-text); }
+.jeep-row-status.loading { color: var(--accent-ink); }
+.jeep-row-status.breakdown { color: var(--danger); }
+.driver-status { margin: 0; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-text); font-weight: 650; font-size: 14px; }
+.driver-status.loading { background: var(--accent-soft); color: var(--accent-ink); }
+.driver-status.breakdown { background: var(--danger-soft); color: var(--danger); }
+
+/* Earnings log */
+.money-field .label small { font-weight: 500; color: var(--faint); }
+.money-input { display: flex; align-items: center; gap: 6px; }
+.money-input span { font-weight: 700; color: var(--muted); }
+.money-input input { flex: 1; font-size: 17px; font-weight: 650; }
+.auto-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.auto-stats span { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 12px; background: var(--surface); }
+.auto-stats small { font-size: 12px; color: var(--muted); font-weight: 600; }
+.auto-stats input { border: 0; background: transparent; padding: 0; font-size: 17px; font-weight: 750; width: 100%; box-shadow: none; color: var(--text); }
+.take-home { display: flex; flex-direction: column; gap: 2px; padding: 14px; border-radius: 14px; background: var(--ok-bg); color: var(--ok-text); }
+.take-home b { font-size: 28px; font-weight: 850; letter-spacing: -0.02em; }
+.take-home small { font-weight: 500; }
+.take-home.neg { background: var(--danger-soft); color: var(--danger); }
+.week-stats { flex-direction: row; }
+.menu-icon.danger { color: var(--danger); }
+
+/* Admin SOS */
+.tile.sos-tile { background: #d93025; color: #fff; font-weight: 900; font-size: 12px; }
+.admin-card.sos-alert { border: 2px solid #d93025; }

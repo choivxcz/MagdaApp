@@ -5,6 +5,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 import { matchStops, makeSearcher, serviceBox } from '../lib/places.js';
+import { landmarks } from '../lib/landmarkData.js';
+import { distanceMeters } from '../lib/geo.js';
 import { addRecent, clearRecents, useRecents } from '../lib/recents.js';
 import { normalize } from '../lib/assistant/knowledge.js';
 
@@ -76,8 +78,11 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
   const stops = matchStops(route, query, q ? 6 : 15);
   const saved = savedPlaces.filter((p) => !q || normalize(`${p.label} ${p.sub}`).includes(q));
   const recent = q ? [] : recents.filter((r) => !saved.some((s) => s.label === r.label));
-  // Online results that aren't just a stop we already list.
-  const places = online.list.filter((p) => !stops.some((s) => normalize(s.label) === normalize(p.label)));
+  // Landmarks along the route: instant, and work offline.
+  const nearby = landmarks.match(query, 6);
+  // Online results that aren't just a stop or landmark we already list.
+  const listed = [...stops, ...nearby];
+  const places = online.list.filter((p) => !listed.some((s) => normalize(s.label) === normalize(p.label) && distanceMeters(s.point, p.point) < 150));
   const value = (field, place) => (active === field ? query : place?.label ?? '');
 
   return (
@@ -162,6 +167,15 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
               <div className="place-head">Jeepney stops</div>
               <ul className="place-list">
                 {stops.map((p) => <Row key={p.stopId} icon={p.icon} tone="stop" title={p.label} sub={p.sub} onPick={() => choose(p)} />)}
+              </ul>
+            </>
+          )}
+
+          {nearby.length > 0 && (
+            <>
+              <div className="place-head">Landmarks along the route</div>
+              <ul className="place-list">
+                {nearby.map((p) => <Row key={p.id} icon={p.icon} tone={`lm lm-${p.cat}`} title={p.label} sub={p.sub} onPick={() => choose(p)} />)}
               </ul>
             </>
           )}
