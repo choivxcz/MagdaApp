@@ -7,6 +7,7 @@ import { adminListDrivers, adminReviewDriver, adminListReports, adminSetReportSt
 import { fetchTips, adminSetTipStatus, deleteTip } from '../lib/community.js';
 import { adminListSos, adminResolveSos, mapsLink } from '../lib/driverData.js';
 import { TipCard } from './CommunityScreen.jsx';
+import AdminMfa, { useAdminAssurance } from '../components/AdminMfa.jsx';
 import routeData from '../data/route-magdalena-santa-cruz.json';
 
 const DRIVER_FILTERS = [
@@ -22,6 +23,7 @@ const when = (d) => (d ? new Date(d).toLocaleString([], { month: 'short', day: '
 export default function AdminScreen() {
   const { isAdmin, reload: reloadMe } = useAuth();
   const [tab, setTab] = useState('drivers');
+  const [assurance, recheck] = useAdminAssurance();
 
   if (!isAdmin) {
     return (
@@ -32,10 +34,23 @@ export default function AdminScreen() {
     );
   }
 
+  // Admin powers need a session verified with an authenticator code.
+  if (assurance !== 'verified') {
+    return (
+      <div className="page">
+        <PageHeader title="Admin tools" back="more" />
+        <div className="page-body">
+          <AdminMfa state={assurance} onVerified={recheck} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       <PageHeader title="Admin tools" back="more" />
       <div className="page-body">
+        <p className="fineprint mfa-ok"><Icon name="shield" size={14} /> 2-step verification on</p>
         <Segmented value={tab} onChange={setTab} options={[['drivers', 'Drivers'], ['reports', 'Reports'], ['tips', 'Tips'], ['sos', 'SOS']]} />
         {tab === 'drivers' ? <Drivers onChange={reloadMe} /> : tab === 'reports' ? <Reports /> : tab === 'tips' ? <Tips /> : <SosAlerts />}
       </div>

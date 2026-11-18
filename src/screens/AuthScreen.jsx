@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { setPrefs, usePrefs } from '../lib/prefs.js';
-import { friendlyAuthError } from '../lib/account.js';
+import { friendlyAuthError, passwordProblem } from '../lib/account.js';
 import { AUTH_REDIRECT_URL } from '../lib/authLinks.js';
 import { Logo } from '../components/Icon.jsx';
 
@@ -32,6 +32,8 @@ export default function AuthScreen() {
         if (err) throw err;
         setPrefs({ guest: false });
       } else if (mode === 'signup') {
+        const weak = passwordProblem(password, email);
+        if (weak) throw new Error(weak);
         const { data, error: err } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -90,7 +92,7 @@ export default function AuthScreen() {
         </label>
         {mode !== 'forgot' && (
           <label>Password
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={mode === 'signup' ? 8 : 6} maxLength={72}
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} />
           </label>
         )}

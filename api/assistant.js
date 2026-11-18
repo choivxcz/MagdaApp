@@ -3,11 +3,17 @@
 // Without it the app answers with its built-in offline assistant instead.
 import { handleAssistant } from './_agent.js';
 
+const MAX_BODY_BYTES = 64 * 1024; // a chat question is a few KB at most
+
 export default async function handler(req, res) {
+  if (Number(req.headers['content-length'] ?? 0) > MAX_BODY_BYTES) {
+    return res.status(413).json({ error: 'too_large' });
+  }
   const out = await handleAssistant({
     method: req.method,
     origin: req.headers.origin,
-    ip: String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() || req.socket?.remoteAddress,
+    // Set by Vercel itself (a caller can't fake it, unlike the first x-forwarded-for entry).
+    ip: req.headers['x-real-ip'] || String(req.headers['x-vercel-forwarded-for'] ?? req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() || req.socket?.remoteAddress,
     body: typeof req.body === 'string' ? safeJson(req.body) : req.body,
     env: process.env,
   });

@@ -2,12 +2,12 @@
 // Usage: npm run setup:db   (safe to run again)
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
-import { need } from './env.mjs';
+import { need, dbSsl } from './env.mjs';
 
 const { SUPABASE_DB_URL } = need('SUPABASE_DB_URL');
 const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
 
-const client = new pg.Client({ connectionString: SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+const client = new pg.Client({ connectionString: SUPABASE_DB_URL, ssl: dbSsl() });
 
 try {
   await client.connect();

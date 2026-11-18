@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { useAuth } from '../lib/auth.jsx';
-import { friendlyAuthError } from '../lib/account.js';
+import { friendlyAuthError, passwordProblem } from '../lib/account.js';
 import { Logo } from '../components/Icon.jsx';
 
 // Shown after tapping a "reset password" email link.
@@ -15,6 +15,8 @@ export default function NewPasswordScreen() {
   async function submit(e) {
     e.preventDefault();
     if (password !== confirm) return setError('The two passwords don’t match.');
+    const weak = passwordProblem(password, user?.email);
+    if (weak) return setError(weak);
     setBusy(true);
     setError('');
     const { error: err } = await supabase.auth.updateUser({ password });
@@ -32,10 +34,10 @@ export default function NewPasswordScreen() {
       </div>
       <form className="auth-form" onSubmit={submit}>
         <label>New password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete="new-password" />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} maxLength={72} autoComplete="new-password" />
         </label>
         <label>Type it again
-          <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={6} autoComplete="new-password" />
+          <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={8} maxLength={72} autoComplete="new-password" />
         </label>
         {error && <p className="warn">{error}</p>}
         <button className="btn primary wide" disabled={busy}>{busy ? 'Saving…' : 'Save new password'}</button>

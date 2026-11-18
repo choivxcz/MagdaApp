@@ -10,11 +10,14 @@ function assistantDevApi(env) {
     configureServer(server) {
       server.middlewares.use('/api/assistant', async (req, res) => {
         let raw = '';
-        for await (const chunk of req) raw += chunk;
+        for await (const chunk of req) {
+          raw += chunk;
+          if (raw.length > 64 * 1024) { res.statusCode = 413; return res.end(); }
+        }
         let body = null;
         try { body = raw ? JSON.parse(raw) : null; } catch { /* bad JSON -> 400 below */ }
         const { handleAssistant } = await server.ssrLoadModule('/api/_agent.js');
-        const out = await handleAssistant({ method: req.method, origin: req.headers.origin, ip: req.socket.remoteAddress, body, env });
+        const out = await handleAssistant({ method: req.method, origin: req.headers.origin, ip: req.socket.remoteAddress, body, env, dev: true });
         res.statusCode = out.status;
         for (const [k, v] of Object.entries(out.headers)) res.setHeader(k, v);
         if (out.json == null) return res.end();

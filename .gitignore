@@ -5,6 +5,8 @@
 .env.*
 .vercel/
 *.keystore
+*.crt
+*.pem
 *.jks
 key.properties
 google-services.json

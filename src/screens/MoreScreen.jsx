@@ -482,7 +482,7 @@ function Privacy() {
         <h3>What we store</h3>
         <ul>
           <li><b>Account:</b> your email, name and fare type, so you can sign in and keep settings.</li>
-          <li><b>Photos (optional):</b> your profile picture, and for drivers a photo of the jeepney. A commuter’s photo is only shown to them. For approved drivers, riders who tap the jeepney on the map see the driver’s name, profile picture and jeepney photo.</li>
+          <li><b>Photos (optional):</b> your profile picture, and for drivers a photo of the jeepney. A commuter’s photo isn’t shown to anyone in the app, but like all photos it is stored at a hard-to-guess web link. For approved drivers, riders who tap the jeepney on the map see the driver’s name, profile picture and jeepney photo.</li>
           <li><b>Saved places and trips:</b> the places (like Home or School) and trips you saved. Only you can see them.</li>
           <li><b>Community tips (optional):</b> tips you share are public, shown with your first name only. If you attach your spot, it is rounded to about 10 m and shown with the tip. You can delete your tips at any time.</li>
           <li><b>“I’m waiting here” (optional):</b> the spot where you wait, your direction and how many you are. On-duty drivers see it without your name. It ends after 20 minutes or when you cancel, and is deleted soon after.</li>

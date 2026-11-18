@@ -349,18 +349,42 @@ async function runAgent(input, env) {
 // ---------------------------------------------------------------------------
 // Request checks shared by Vercel and the dev server.
 
-const ALLOWED_ORIGIN = /^(https:\/\/sakay-laguna[a-z0-9-]*\.vercel\.app|capacitor:\/\/localhost|https?:\/\/localhost(:\d+)?|http:\/\/127\.0\.0\.1(:\d+)?|http:\/\/192\.168\.\d+\.\d+(:\d+)?)$/;
+// Who may call the AI from a browser. Only the real website and the phone
+// app; more (e.g. a preview link) via ALLOWED_ORIGINS="https://a,https://b".
+// Local test addresses only for the dev server (`npm run dev`).
+// (A browser's Origin can't be faked by a web page; scripts can fake it,
+// which is why there are also usage limits below.)
+const SITE_ORIGINS = ['https://sakay-laguna.vercel.app', 'https://localhost', 'capacitor://localhost']; // website, Android app, iPhone app
+const DEV_ORIGIN = /^(https?:\/\/localhost(:\d+)?|https?:\/\/127\.0\.0\.1(:\d+)?|https?:\/\/192\.168\.\d+\.\d+(:\d+)?)$/;
 
-// A small per-address limit so one person can't use up the free daily quota.
-// (Per server instance; good enough for a free-tier app.)
-const hits = new Map();
-function rateLimited(ip) {
-  const now = Date.now();
-  const recent = (hits.get(ip) ?? []).filter((t) => now - t < 60_000);
-  recent.push(now);
-  hits.set(ip, recent);
-  if (hits.size > 5000) hits.clear();
-  return recent.length > 12;
+export function originAllowed(origin, env = {}, dev = false) {
+  if (!origin) return true; // the phone app's native requests and same-site calls
+  const extra = String(env.ALLOWED_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean);
+  return SITE_ORIGINS.includes(origin) || extra.includes(origin) || (dev && DEV_ORIGIN.test(origin));
+}
+
+// Usage limits so nobody can use up the free AI quota: per address
+// (12 a minute, 150 a day) and for everyone together (240 a minute).
+// Per server instance; good enough for a free-tier app.
+const PER_MINUTE = 12;
+const PER_DAY = 150;
+const ALL_PER_MINUTE = 240;
+const hits = new Map(); // ip -> { minute: [times], day, dayCount }
+let allHits = [];
+export function rateLimited(ip, now = Date.now()) {
+  allHits = allHits.filter((t) => now - t < 60_000);
+  if (allHits.length >= ALL_PER_MINUTE) return true;
+  const today = Math.floor(now / 86_400_000);
+  const h = hits.get(ip) ?? { minute: [], day: today, dayCount: 0 };
+  if (h.day !== today) { h.day = today; h.dayCount = 0; }
+  h.minute = h.minute.filter((t) => now - t < 60_000);
+  if (h.minute.length >= PER_MINUTE || h.dayCount >= PER_DAY) return true;
+  h.minute.push(now);
+  h.dayCount += 1;
+  allHits.push(now);
+  hits.set(ip, h);
+  if (hits.size > 10_000) hits.clear();
+  return false;
 }
 
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
@@ -415,9 +439,10 @@ function readInput(body) {
 }
 
 // Returns { status, headers, json } for one HTTP request.
-export async function handleAssistant({ method, origin, ip, body, env }) {
-  const headers = { 'Cache-Control': 'no-store', Vary: 'Origin' };
-  if (origin && ALLOWED_ORIGIN.test(origin)) {
+export async function handleAssistant({ method, origin, ip, body, env, dev = false }) {
+  const headers = { 'Cache-Control': 'no-store', Vary: 'Origin', 'X-Content-Type-Options': 'nosniff' };
+  const allowed = originAllowed(origin, env, dev);
+  if (origin && allowed) {
     Object.assign(headers, {
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -427,7 +452,7 @@ export async function handleAssistant({ method, origin, ip, body, env }) {
   }
   if (method === 'OPTIONS') return { status: 204, headers, json: null };
   if (method !== 'POST') return { status: 405, headers, json: { error: 'method_not_allowed' } };
-  if (origin && !ALLOWED_ORIGIN.test(origin)) return { status: 403, headers, json: { error: 'forbidden' } };
+  if (!allowed) return { status: 403, headers, json: { error: 'forbidden' } };
   if (!env.GEMINI_API_KEY) return { status: 503, headers, json: { error: 'not_configured' } };
   if (rateLimited(ip || 'unknown')) return { status: 429, headers, json: { error: 'slow_down' } };
 

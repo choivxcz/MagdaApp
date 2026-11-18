@@ -120,6 +120,20 @@ export async function deleteMyAccount(userId) {
   await supabase.auth.signOut({ scope: 'local' });
 }
 
+// A new password must be at least 8 characters and not one of the
+// passwords attackers try first. Returns a message, or '' when it's fine.
+const COMMON = ['password', 'password1', '12345678', '123456789', '1234567890', 'qwertyui', 'iloveyou', 'sakaylaguna', 'magdalena', 'santacruz', 'abcd1234', 'qwerty123', '11111111', '00000000'];
+export function passwordProblem(password, email = '') {
+  const p = String(password ?? '');
+  if (p.length < 8) return 'Use at least 8 characters.';
+  const lower = p.toLowerCase();
+  if (COMMON.includes(lower)) return 'That password is too common. Try a short sentence you can remember.';
+  if (/^(.)\1+$/.test(p)) return 'Don’t repeat one character.';
+  const name = String(email).split('@')[0].toLowerCase();
+  if (name.length >= 4 && lower.includes(name)) return 'Don’t use your email name in your password.';
+  return '';
+}
+
 // Turns Supabase sign-in errors into plain language.
 export function friendlyAuthError(e) {
   const m = e?.message || String(e);
@@ -133,7 +147,7 @@ export function friendlyAuthError(e) {
     return 'We couldn’t send the email. The app’s email settings have a problem; please tell the admin.';
   }
   if (/rate limit|too many/i.test(m)) return 'Too many tries. Please wait a few minutes and try again.';
-  if (/password should be at least/i.test(m)) return 'Password must be at least 6 characters.';
+  if (/password should be at least/i.test(m)) return 'Password must be at least 8 characters.';
   if (/failed to fetch|network/i.test(m)) return 'No internet connection. Please try again.';
   return m;
 }

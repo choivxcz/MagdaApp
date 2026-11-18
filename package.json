@@ -15,6 +15,7 @@
     "check": "node scripts/check-backend.mjs",
     "check:links": "node scripts/check-email-links.mjs",
     "admin:add": "node scripts/add-admin.mjs",
+    "admin:mfa-reset": "node scripts/admin-mfa-reset.mjs",
     "check:email": "node scripts/check-email.mjs",
     "landmarks": "node scripts/fetch-landmarks.mjs",
     "deploy:web": "vercel deploy --prod --yes"

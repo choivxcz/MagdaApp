@@ -1319,3 +1319,17 @@ input.switch {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Admin 2-step verification */
+.mfa-card { gap: 14px; }
+.mfa-head { display: flex; gap: 12px; align-items: flex-start; }
+.mfa-head > div { display: flex; flex-direction: column; gap: 3px; }
+.mfa-head b { font-size: 17px; }
+.mfa-icon { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; flex-shrink: 0; background: var(--accent); color: var(--brand-bright); }
+.mfa-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--muted); }
+.mfa-qr { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px; border-radius: 14px; background: #fff; }
+.mfa-qr .sub { color: #5f6672; }
+.mfa-secret { font-size: 14px; letter-spacing: 0.06em; color: #1c2230; word-break: break-all; text-align: center; }
+.mfa-form { display: flex; flex-direction: column; gap: 10px; }
+.mfa-code { font-size: 28px; font-weight: 800; letter-spacing: 0.35em; text-align: center; padding: 12px; }
+.mfa-ok { display: inline-flex; align-items: center; gap: 6px; color: var(--ok-text); margin: 0; }

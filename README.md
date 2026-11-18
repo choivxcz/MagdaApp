@@ -286,6 +286,12 @@ Authentication → URL Configuration → Redirect URLs. Check with:
 npm run check:links
 ```
 
+## Security
+
+See [SECURITY.md](SECURITY.md): who can see what, admin 2-step verification,
+how to handle secrets, and the Supabase dashboard settings to check.
+After changing `supabase/schema.sql`, run `npm run setup:db` and `npm test`.
+
 ## Saving mobile data (load)
 
 Most riders and drivers use prepaid load, so the app keeps data use small:

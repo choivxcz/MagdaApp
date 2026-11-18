@@ -5,12 +5,12 @@
 //        npm run admin:add -- --list
 import { parseArgs } from 'node:util';
 import pg from 'pg';
-import { need } from './env.mjs';
+import { need, dbSsl } from './env.mjs';
 
 const { SUPABASE_DB_URL } = need('SUPABASE_DB_URL');
 const { values: a } = parseArgs({ options: { email: { type: 'string' }, remove: { type: 'boolean' }, list: { type: 'boolean' } } });
 
-const db = new pg.Client({ connectionString: SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+const db = new pg.Client({ connectionString: SUPABASE_DB_URL, ssl: dbSsl() });
 await db.connect();
 try {
   if (a.list || !a.email) {

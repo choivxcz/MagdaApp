@@ -923,3 +923,133 @@ as $$
 $$;
 revoke all on function public.live_jeeps(text, timestamptz) from public;
 grant execute on function public.live_jeeps(text, timestamptz) to anon, authenticated;
+
+-- =====================================================================
+-- 14. Security hardening (review of 2026-11-18)
+-- =====================================================================
+
+-- 14a. Drivers' privacy: a jeepney's position is public only while it is
+--      on a trip. Before, anyone could read where each driver ENDED their
+--      last trip (often their home). Drivers can still read their own row.
+drop policy if exists "anyone reads locations" on public.jeepney_locations;
+drop policy if exists "anyone reads live locations" on public.jeepney_locations;
+create policy "anyone reads live locations" on public.jeepney_locations
+  for select to anon, authenticated
+  using (is_active and updated_at > now() - interval '2 minutes');
+drop policy if exists "driver reads own location" on public.jeepney_locations;
+create policy "driver reads own location" on public.jeepney_locations
+  for select to authenticated
+  using (driver_id = (select auth.uid()));
+
+-- 14b. Live updates: never look further back than 5 minutes (a made-up
+--      old "since" used to return old positions), and send no position or
+--      plate for trips that ended (the app only needs to remove them).
+create or replace function public.live_jeeps(p_route_id text, p_since timestamptz default null)
+returns json
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select json_build_object(
+    'now', floor(extract(epoch from now()) * 1000),
+    'rows', coalesce(json_agg(case when l.is_active then json_build_array(
+      l.driver_id, l.plate, l.direction,
+      round(l.lat::numeric, 5), round(l.lng::numeric, 5),
+      l.seats_total, l.seats_taken, l.trip_status, l.last_trip, true,
+      floor(extract(epoch from l.updated_at))
+    ) else json_build_array(
+      l.driver_id, null, null, null, null, null, null, null, null, false,
+      floor(extract(epoch from l.updated_at))
+    ) end), '[]'::json)
+  )
+  from public.jeepney_locations l
+  where l.route_id = p_route_id
+    and l.updated_at > greatest(coalesce(p_since, now() - interval '2 minutes'), now() - interval '5 minutes')
+    and (p_since is not null or l.is_active);
+$$;
+revoke all on function public.live_jeeps(text, timestamptz) from public;
+grant execute on function public.live_jeeps(text, timestamptz) to anon, authenticated;
+
+-- 14c. Limits against spam and runaway apps. Errors are in plain words
+--      because the app shows them to the user.
+create or replace function public.limit_rows()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_count int;
+begin
+  if tg_table_name = 'ride_reports' then
+    select count(*) into v_count from public.ride_reports
+     where user_id = new.user_id and created_at > now() - interval '1 day';
+    if v_count >= 10 then raise exception 'You have sent 10 reports today. Please try again tomorrow, or call 911 if this is an emergency.'; end if;
+  elsif tg_table_name = 'sos_alerts' then
+    select count(*) into v_count from public.sos_alerts
+     where user_id = new.user_id and created_at > now() - interval '1 hour';
+    if v_count >= 10 then raise exception 'Too many SOS alerts in the last hour. Call 911 directly.'; end if;
+  elsif tg_table_name = 'saved_places' then
+    select count(*) into v_count from public.saved_places where user_id = new.user_id;
+    if v_count >= 50 then raise exception 'You can save up to 50 places. Remove one first.'; end if;
+  elsif tg_table_name = 'saved_trips' then
+    select count(*) into v_count from public.saved_trips where user_id = new.user_id;
+    if v_count >= 100 then raise exception 'You can save up to 100 trips. Remove one first.'; end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists limit_rows on public.ride_reports;
+create trigger limit_rows before insert on public.ride_reports for each row execute function public.limit_rows();
+drop trigger if exists limit_rows on public.sos_alerts;
+create trigger limit_rows before insert on public.sos_alerts for each row execute function public.limit_rows();
+drop trigger if exists limit_rows on public.saved_places;
+create trigger limit_rows before insert on public.saved_places for each row execute function public.limit_rows();
+drop trigger if exists limit_rows on public.saved_trips;
+create trigger limit_rows before insert on public.saved_trips for each row execute function public.limit_rows();
+
+-- 14d. Length limits on text people can type.
+do $$ begin
+  alter table public.profiles add constraint profiles_full_name_len check (char_length(full_name) <= 80) not valid;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.waiting_signals add constraint waiting_signals_route_len check (char_length(route_id) <= 60) not valid;
+exception when duplicate_object then null; end $$;
+
+-- A new account's name comes from the sign-up form; keep it short.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, full_name, fare_type)
+  values (
+    new.id,
+    nullif(left(trim(new.raw_user_meta_data ->> 'full_name'), 60), ''),
+    case when new.raw_user_meta_data ->> 'fare_type' = 'discounted' then 'discounted' else 'regular' end
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+-- 14e. Admins need 2-step verification. Admin powers (approving drivers,
+--      reading reports and SOS alerts, hiding tips) work only in a session
+--      verified with an authenticator-app code ("aal2"). A stolen admin
+--      password alone is not enough. Set it up in the app: More → Admin tools.
+--      Lost the authenticator? A developer runs: npm run admin:mfa-reset -- --email ...
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (select 1 from public.app_admins where user_id = (select auth.uid()))
+     and coalesce((select auth.jwt()) ->> 'aal', 'aal1') = 'aal2';
+$$;
+grant execute on function public.is_admin() to authenticated;
