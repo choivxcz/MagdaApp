@@ -286,6 +286,31 @@ Authentication → URL Configuration → Redirect URLs. Check with:
 npm run check:links
 ```
 
+## Saving mobile data (load)
+
+Most riders and drivers use prepaid load, so the app keeps data use small:
+
+- **Only what changed.** Each check for jeepneys downloads only the ones that
+  moved since the last check, in a compact form (`live_jeeps` in
+  `supabase/schema.sql`), usually a few hundred bytes.
+- **Checks only as often as needed.** Every 5 s while a rider watches for
+  their jeepney (a trip is planned), 12 s while browsing the map, 20 s on
+  the Routes tab, none in the background.
+- **Drivers send less while parked.** Position every 10 s while moving,
+  every 30 s while loading at the terminal or on a break, right away after a
+  big move.
+- **Map, fonts and app files are kept on the phone** after the first visit
+  (`public/sw.js`, website only; the Android app has its files built in).
+  Map pictures are about 4 KB each and never downloaded twice.
+- **Driver and admin pages** are only downloaded by people who open them.
+- **Data saver** (More → Preferences → Mobile data): Auto turns on with the
+  phone's own Data Saver or a 2G signal. It doubles the time between checks,
+  asks one directions service at a time instead of two, waits for more
+  letters before searching, skips naming tapped spots, and shows drivers'
+  photos only when tapped.
+- **Data meter** in the same place shows about how much the app used today
+  and this month.
+
 ## How the live tracking works
 
 - Each driver has **one row** in `jeepney_locations` that gets overwritten, so

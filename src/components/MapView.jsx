@@ -111,6 +111,7 @@ function fitZoom(map, route) {
 }
 
 function applyLimits(map, route) {
+  if (!hasSize(map)) return;
   const z = fitZoom(map, route);
   if (Number.isFinite(z)) map.setMinZoom(Math.max(0, z - EXTRA_ZOOM_OUT));
   keepOnRoute(map, route);
@@ -213,12 +214,28 @@ function landmarkAt(map, point) {
   return f ? { ...f.properties, coord: f.geometry.coordinates } : null;
 }
 
+// A hidden map (another tab is open) has no size: don't adjust it then.
+const hasSize = (map) => {
+  const el = map.getContainer();
+  return el.clientWidth > 0 && el.clientHeight > 0;
+};
+
 function keepOnRoute(map, route) {
+  // Moving the map here fires "move" again, which calls this again. Without
+  // this guard, a hidden (zero-size) map could bounce between our limit and
+  // MapLibre's own forever and freeze the page.
+  if (map.keepingOnRoute || !hasSize(map)) return;
   const [[x1, y1], [x2, y2]] = centerBox(route);
   const c = map.getCenter();
   const lng = Math.min(Math.max(c.lng, x1), x2);
   const lat = Math.min(Math.max(c.lat, y1), y2);
-  if (lng !== c.lng || lat !== c.lat) map.setCenter([lng, lat]);
+  if (Math.abs(lng - c.lng) < 1e-9 && Math.abs(lat - c.lat) < 1e-9) return;
+  map.keepingOnRoute = true;
+  try {
+    map.setCenter([lng, lat]);
+  } finally {
+    map.keepingOnRoute = false;
+  }
 }
 
 // guide: { walks, rides, trikes: [coordinate lists], markers: [{ kind, point, label }] }
@@ -356,6 +373,7 @@ export default function MapView({
     const map = mapRef.current;
     if (!visible || !map) return;
     map.resize();
+    if (paddingRef.current && hasSize(map)) map.setPadding({ top: 0, bottom: 0, left: 0, right: 0, ...paddingRef.current });
     if (!fitted.current && containerRef.current.clientHeight > 0) {
       fitted.current = true;
       // Room for floating panels is already set with setPadding, so only a small margin here.
@@ -364,10 +382,11 @@ export default function MapView({
     applyLimits(map, route);
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Leave room for floating panels when centering the map.
+  // Leave room for floating panels when centering the map. A hidden map
+  // gets its padding when it is shown (see the effect above).
   useEffect(() => {
     const map = mapRef.current;
-    if (!padding || !map) return;
+    if (!padding || !map || !hasSize(map)) return;
     map.setPadding({ top: 0, bottom: 0, left: 0, right: 0, ...padding });
     if (map.loaded()) applyLimits(map, route);
   }, [padding?.top, padding?.bottom]); // eslint-disable-line react-hooks/exhaustive-deps
