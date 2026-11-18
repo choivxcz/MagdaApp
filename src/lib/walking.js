@@ -3,10 +3,12 @@
 // first good answer wins (one of them is sometimes slow); a road router is
 // the last resort. If none answers, we return null: the app then shows no
 // line at all rather than a straight shortcut across fields and houses.
+import { isDataSaver } from './prefs.js';
 
 const OSRM_FOOT = 'https://routing.openstreetmap.de/routed-foot';
 const VALHALLA = 'https://valhalla1.openstreetmap.de';
 const OSRM_ROAD = 'https://router.project-osrm.org';
+
 const WALK_MPS = 1.3; // ~4.7 km/h
 const TIMEOUT_MS = 12000;
 const cache = new Map();
@@ -67,12 +69,23 @@ async function firstOk(tasks) {
   }
 }
 
+// Normally both services are asked at once (fastest answer wins). With
+// Data saver they are asked one after the other: half the requests.
+async function race(tasks) {
+  if (!isDataSaver()) return firstOk(tasks);
+  for (const t of tasks) {
+    const r = await firstOk([t]);
+    if (r != null) return r;
+  }
+  return null;
+}
+
 // Returns { coords, meters } following streets, or null if no service answered.
 export async function walkingPath(from, to) {
   const key = ll(from) + ';' + ll(to);
   if (cache.has(key)) return cache.get(key);
 
-  let r = await firstOk([
+  let r = await race([
     (s) => osrmRoute(OSRM_FOOT, 'foot', from, to, s),
     (s) => valhallaRoute(from, to, s),
   ]);
@@ -109,7 +122,7 @@ export async function fastestOf(from, points) {
     if (best == null) throw new Error('no distances');
     return best;
   };
-  return firstOk([
+  return race([
     async (s) => {
       const data = await getJson(`${OSRM_FOOT}/table/v1/foot/${[from, ...points].map(ll).join(';')}?sources=0&annotations=distance`, s);
       if (data.code !== 'Ok') throw new Error('no table');

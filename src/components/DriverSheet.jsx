@@ -5,6 +5,7 @@ import { fetchDriverCard } from '../lib/photos.js';
 import { isDemo } from '../lib/supabase.js';
 import { DIRECTIONS, seatStatus } from '../lib/directions.js';
 import { riderStatusText, statusOf } from '../lib/tripStatus.js';
+import { useDataSaver } from '../lib/prefs.js';
 
 function agoText(date) {
   const s = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
@@ -16,6 +17,9 @@ function agoText(date) {
 // `jeep` is the live map entry (null once the jeepney stops sharing).
 export default function DriverSheet({ jeepId, jeep, onClose }) {
   const [card, setCard] = useState(undefined); // undefined = loading, null = not found
+  // Photos are the biggest download here: with Data saver, only on request.
+  const saver = useDataSaver();
+  const [photosOn, setPhotosOn] = useState(!saver);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -46,8 +50,13 @@ export default function DriverSheet({ jeepId, jeep, onClose }) {
     <div className="driver-backdrop" onClick={onClose}>
       <section className="driver-sheet" role="dialog" aria-modal="true" aria-label={`Jeepney ${plate ?? ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="driver-jeep-photo">
-          {card?.jeepney ? (
+          {card?.jeepney && photosOn ? (
             <img src={card.jeepney} alt={`Jeepney ${plate ?? ''}`} />
+          ) : card?.jeepney || card?.avatar ? (
+            <button className="jeep-photo-empty photo-load" onClick={() => setPhotosOn(true)}>
+              <Icon name="camera" size={30} />
+              <span>Show photos <small>(uses a little data)</small></span>
+            </button>
           ) : (
             <div className="jeep-photo-empty">
               <Icon name="bus" size={34} />
@@ -59,7 +68,7 @@ export default function DriverSheet({ jeepId, jeep, onClose }) {
 
         <div className="driver-body">
           <div className="driver-head">
-            <Avatar url={card?.avatar} name={card?.name} size={72} className="driver-avatar" />
+            <Avatar url={photosOn ? card?.avatar : null} name={card?.name} size={72} className="driver-avatar" />
             <div className="driver-name">
               <b>{card?.name ?? (card === undefined ? 'Loading…' : 'Jeepney driver')}</b>
               <span className="sub">Driver · {plate}</span>

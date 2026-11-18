@@ -1197,3 +1197,125 @@ input.switch {
 /* Admin SOS */
 .tile.sos-tile { background: #d93025; color: #fff; font-weight: 900; font-size: 12px; }
 .admin-card.sos-alert { border: 2px solid #d93025; }
+
+/* =====================================================================
+   Motion and touch feedback
+   Short (under 0.4 s), only on things that change, and none at all for
+   people who turned on "reduce motion" on their phone.
+   ===================================================================== */
+:root {
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+@keyframes page-in { from { opacity: 0; transform: translateY(10px); } }
+@keyframes page-push { from { opacity: 0; transform: translateX(28px); } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(8px); } }
+@keyframes drop-in { from { opacity: 0; transform: translateY(-8px) scale(0.98); } }
+@keyframes pop { 0% { transform: scale(0.85); opacity: 0.4; } 60% { transform: scale(1.06); } 100% { transform: scale(1); } }
+@keyframes pop-in { from { transform: scale(0.3); opacity: 0; } }
+@keyframes pin-drop { 0% { translate: 0 -22px; opacity: 0; } 70% { translate: 0 3px; opacity: 1; } 100% { translate: 0 0; } }
+@keyframes nav-pop { 0% { transform: scale(1); } 40% { transform: scale(1.18) translateY(-2px); } 100% { transform: scale(1); } }
+@keyframes bar-in { from { transform: scaleX(0); } }
+@keyframes shimmer { from { background-position: -200px 0; } to { background-position: calc(200px + 100%) 0; } }
+@keyframes arriving { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 45%, transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
+
+/* Screens: tabs rise in, sub-pages (with a back arrow) slide in from the right. */
+.page { animation: page-in 0.26s var(--ease-out); }
+.page:has(> .page-header) { animation-name: page-push; }
+
+/* Press feedback on everything tappable. */
+.btn, .chip, .option-card, .status-btn, .seat-btn, .round-action, .swap-btn, .map-btn, .today-card, .route-card,
+.helpful-btn, .suggest-chip, .bubble-action, .send-btn, .sos-float, .sos-mini, .profile-card, .choice {
+  transition: transform 0.12s var(--ease-out), background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.btn:active:not(:disabled), .chip:active, .option-card:active, .status-btn:active:not(:disabled), .seat-btn:active:not(:disabled),
+.round-action:active, .swap-btn:active:not(:disabled), .map-btn:active, .today-card:active, .route-card:active,
+.helpful-btn:active:not(:disabled), .suggest-chip:active, .bubble-action:active, .send-btn:active:not(:disabled),
+.sos-float:active, .sos-mini:active, .profile-card:active, .choice:active {
+  transform: scale(0.96);
+}
+.menu-row, .place-row, .jeep-row { transition: background-color 0.15s; }
+.menu-row:active, .place-row:active, .jeep-row:active { background-color: var(--surface); }
+.seat-btn:active:not(:disabled) { transform: scale(0.9); }
+
+/* Bottom navigation: the chosen tab's icon hops and its bar grows in. */
+.bottom-nav a .icon { transition: transform 0.2s var(--ease-out); }
+.bottom-nav a.on .icon { animation: nav-pop 0.35s var(--ease-spring); }
+.bottom-nav a.on::after { animation: bar-in 0.25s var(--ease-out); }
+
+/* Search panel and its results */
+.place-panel, .pick-banner { animation: drop-in 0.2s var(--ease-out); }
+.place-list li { animation: fade-up 0.22s var(--ease-out) both; }
+.place-list li:nth-child(2) { animation-delay: 0.02s; }
+.place-list li:nth-child(3) { animation-delay: 0.04s; }
+.place-list li:nth-child(4) { animation-delay: 0.06s; }
+.place-list li:nth-child(5) { animation-delay: 0.08s; }
+.place-list li:nth-child(n + 6) { animation-delay: 0.1s; }
+
+/* Trip: options and steps appear one after another; the fare pops. */
+.option-card { animation: fade-up 0.25s var(--ease-out) both; }
+.option-card:nth-child(2) { animation-delay: 0.04s; }
+.option-card:nth-child(3) { animation-delay: 0.08s; }
+.option-card:nth-child(4) { animation-delay: 0.12s; }
+.option-card.on { box-shadow: 0 4px 14px color-mix(in srgb, var(--brand) 22%, transparent); }
+.steps .step { animation: fade-up 0.3s var(--ease-out) both; }
+.steps .step:nth-child(2) { animation-delay: 0.05s; }
+.steps .step:nth-child(3) { animation-delay: 0.1s; }
+.steps .step:nth-child(4) { animation-delay: 0.15s; }
+.steps .step:nth-child(n + 5) { animation-delay: 0.2s; }
+.pop { display: inline-block; animation: pop 0.32s var(--ease-spring); }
+.next-jeep { transition: background-color 0.3s, color 0.3s; }
+.next-jeep.arriving { animation: arriving 1.4s ease-in-out infinite; }
+.trip-summary, .sheet-head { animation: fade-up 0.25s var(--ease-out); }
+.bottom-sheet > .ok, .bottom-sheet > .warn, .tips-strip, .walk-hint { animation: fade-up 0.25s var(--ease-out); }
+
+/* Bottom panel: smooth when it settles, none while a finger drags it. */
+.bottom-sheet { transition: max-height 0.32s var(--ease-out); }
+.map-screen.sheet-dragging .bottom-sheet,
+.map-screen.sheet-dragging .map-float-right,
+.map-screen.sheet-dragging .landmark-card,
+.map-screen.sheet-dragging .maplibregl-ctrl-bottom-left,
+.map-screen.sheet-dragging .maplibregl-ctrl-bottom-right { transition: none; }
+.sheet-handle span { transition: width 0.2s var(--ease-out), background-color 0.2s; }
+.map-screen.sheet-dragging .sheet-handle span { width: 56px; background: var(--faint); }
+
+/* Map: pins drop in, new jeepneys and markers pop in. */
+.pickup-pin, .dest-pin { animation: pin-drop 0.38s var(--ease-out); }
+.jeep-icon, .guide-marker { animation: pop-in 0.3s var(--ease-spring); }
+.landmark-card { animation: fade-up 0.24s var(--ease-out); }
+.drive-lock { animation: fade-up 0.3s var(--ease-out); }
+.gaps, .waiting-list, .trip-status { animation: fade-up 0.25s var(--ease-out); }
+
+/* Loading placeholders */
+.skeleton { display: flex; flex-direction: column; gap: 12px; padding: 4px 0; }
+.skeleton-row { display: flex; align-items: center; gap: 12px; }
+.skeleton-dot, .skeleton-lines i, .skeleton-title {
+  display: block; border-radius: 10px;
+  background: linear-gradient(90deg, var(--surface) 0, color-mix(in srgb, var(--border) 70%, var(--card)) 40%, var(--surface) 80%) var(--surface);
+  background-size: 200px 100%; background-repeat: no-repeat; animation: shimmer 1.2s ease-in-out infinite;
+}
+.skeleton-dot { width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0; }
+.skeleton-lines { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+.skeleton-lines i { height: 12px; width: 70%; }
+.skeleton-lines i + i { width: 45%; height: 10px; }
+.skeleton-title { height: 26px; width: 45%; margin: 10px 0 18px; }
+
+/* Data settings */
+.data-meter { display: flex; flex-direction: column; gap: 6px; }
+.data-meter-row { display: flex; align-items: center; gap: 10px; }
+.data-meter-row span { flex: 1; display: flex; flex-direction: column; padding: 10px 12px; border-radius: 12px; background: var(--surface); }
+.data-meter-row small { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.data-meter-row b { font-size: 18px; }
+.pill.ok-pill { background: var(--ok-bg); color: var(--ok-text); }
+.jeep-photo-empty.photo-load { width: 100%; height: 100%; border: 0; cursor: pointer; color: var(--muted); }
+.jeep-photo-empty.photo-load small { display: block; font-weight: 500; }
+
+/* Phones set to reduce motion: no movement at all. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.01ms !important;
+  }
+}

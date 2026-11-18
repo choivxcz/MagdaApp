@@ -11,15 +11,22 @@ import { DIRECTIONS, DIRECTION_KEYS } from '../lib/directions.js';
 import { TRIP_STATUS, STATUS_KEYS } from '../lib/tripStatus.js';
 import { useWakeLock, wakeLockSupported, say, voiceSupported, PHRASES } from '../lib/driverTools.js';
 import { addDriving, addTrip, useDriverDays, dayStats } from '../lib/driverDay.js';
-import { usePrefs, setPrefs } from '../lib/prefs.js';
+import { usePrefs, setPrefs, isDataSaver, useDataSaver } from '../lib/prefs.js';
+import { haptic } from '../lib/haptics.js';
 import { useAuth } from '../lib/auth.jsx';
 import { Avatar, Segmented, navigate } from '../components/ui.jsx';
 
-const SEND_EVERY_MS = 10000; // one GPS update every 10 s keeps data use low
+// Sending the jeepney's position: often while moving (riders' arrival times
+// depend on it), rarely while parked (loading at the terminal, on break),
+// and right away after a big move. Data saver stretches both.
+const SEND_MOVING_MS = 10000;
+const SEND_STOPPED_MS = 30000;
+const SEND_JUMP_M = 150;
 const SEAT_SEND_DELAY_MS = 800; // wait for a burst of taps, then send once
 const END_OF_LEG_M = 80; // this close to the end of a leg = arrived
 const TERMINAL_M = 150; // this close to the start of a leg = at that terminal
-const WAITING_POLL_MS = 15000; // how often to check for waiting passengers
+const WAITING_MOVING_MS = 20000; // how often to check for waiting passengers
+const WAITING_STOPPED_MS = 30000;
 const MOVING_MPS = 10 / 3.6; // faster than 10 km/h = driving: lock the screen
 const STOPPED_MPS = 5 / 3.6; // slower than 5 km/h for a few seconds = stopped
 const BACK_ON_TRIP_MS = 20000; // driving for 20 s ends "Loading" / "Break" / "Refueling"
@@ -74,7 +81,7 @@ function SeatCounter({ taken, capacity, onChange }) {
       </div>
       <div className="seat-row">
         <button className="seat-btn" onClick={() => onChange(taken - 1)} disabled={taken <= 0} aria-label="One passenger got off">−</button>
-        <div className="seat-count"><b>{taken}</b> / {capacity}</div>
+        <div className="seat-count"><b key={taken} className="pop">{taken}</b> / {capacity}</div>
         <button className="seat-btn" onClick={() => onChange(taken + 1)} disabled={taken >= capacity} aria-label="One passenger got on">+</button>
       </div>
       <div className="seat-quick" role="group" aria-label="How full">
@@ -132,6 +139,7 @@ function Gaps({ gaps }) {
 // Stays mounted while the driver looks at other tabs, so the trip keeps going.
 export default function DriveScreen({ route, userId, driver, visible, jeepneys = [], onTripChange }) {
   const prefs = usePrefs();
+  const saver = useDataSaver();
   const voice = prefs.driverVoice ?? 'tl';
   const voiceRef = useRef(voice);
   voiceRef.current = voice;
@@ -156,6 +164,7 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
   const watchId = useRef(null);
   const lastSent = useRef(0);
   const lastCoords = useRef(null);
+  const lastSentAt = useRef(null);
   const seatTimer = useRef(null);
   const prevFix = useRef(null);
   const firstFix = useRef(true);
@@ -184,9 +193,9 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
       fetchWaitingForDrivers(route.id).then((w) => { if (!cancelled) setWaiting(w); }).catch(() => {});
     };
     load();
-    const t = setInterval(load, WAITING_POLL_MS);
+    const t = setInterval(load, (moving ? WAITING_MOVING_MS : WAITING_STOPPED_MS) * (saver ? 1.5 : 1));
     return () => { cancelled = true; clearInterval(t); };
-  }, [visible, route.id]);
+  }, [visible, route.id, moving, saver]);
 
   const myAlong = useMemo(() => (me ? projectOnRoute(route.legs[direction], me).along : null), [me, direction, route]);
 
@@ -281,6 +290,7 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
   async function push(reason = '') {
     if (!lastCoords.current) return;
     lastSent.current = Date.now();
+    lastSentAt.current = [lastCoords.current.longitude, lastCoords.current.latitude];
     try {
       await sendLocation({
         userId,
@@ -393,11 +403,15 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
       push(`Arrived at ${leg.to}. Now ${DIRECTIONS[next].label}`);
       return;
     }
-    if (Date.now() - lastSent.current >= SEND_EVERY_MS) push();
+    const since = Date.now() - lastSent.current;
+    const every = (motion.current.moving ? SEND_MOVING_MS : SEND_STOPPED_MS) * (isDataSaver() ? 1.5 : 1);
+    const jumped = lastSentAt.current && distanceMeters(lastSentAt.current, pt) >= SEND_JUMP_M;
+    if (since >= every || (jumped && since >= 5000)) push();
   }
 
   function start() {
     if (!navigator.geolocation) return setStatus('GPS is not available on this device.');
+    haptic.success();
     lastSent.current = 0;
     centered.current = false;
     firstFix.current = true;
@@ -419,6 +433,7 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
   }
 
   async function stop() {
+    haptic.warn();
     stopWatching();
     setOnTrip(false);
     setMoving(false);
@@ -435,6 +450,7 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
 
   function changeSeats(n) {
     const v = Math.max(0, Math.min(capacity, n));
+    if (v !== seatsRef.current) haptic.tap();
     setSeatsTaken(v);
     seatsRef.current = v;
     if (!onTrip) return;
@@ -449,6 +465,7 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
   }
 
   function changeLastTrip(v) {
+    haptic.tap();
     setLastTrip(v);
     lastTripRef.current = v;
     push(v ? 'Marked as last trip' : 'Last trip removed');
@@ -469,7 +486,7 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
         route={route} me={me} jeepneys={others} waiting={waitingOnMap} activeDirection={direction} visible={visible}
         onReady={(m) => { mapRef.current = m; setMap(m); }} padding={{ top: 30, bottom: 460 }}
       />
-      <button className="sos-float" onClick={() => setSosOpen(true)} aria-label="SOS emergency">SOS</button>
+      <button className="sos-float" onClick={() => { haptic.alert(); setSosOpen(true); }} aria-label="SOS emergency">SOS</button>
       <div className="map-float-right drive">
         <MapButtons map={map} onLocate={me ? () => map?.flyTo({ center: me, zoom: 15 }) : undefined} />
       </div>
@@ -478,7 +495,7 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
         <DriveLock
           direction={direction} tripStatus={tripStatus} lastTrip={lastTrip} free={free} capacity={capacity}
           nextWaiting={waitingAhead[0]} totalWaiting={totalWaiting} gaps={gaps} lang={voice}
-          onUnlock={unlock} onSos={() => setSosOpen(true)}
+          onUnlock={unlock} onSos={() => { haptic.alert(); setSosOpen(true); }}
         />
       ) : (
         <section className="bottom-sheet drive-sheet">
@@ -518,7 +535,7 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
 
           <TripStatusPicker
             value={tripStatus} lastTrip={lastTrip} disabled={!onTrip}
-            onChange={(s) => setTripStatusNow(s)} onLastTrip={changeLastTrip}
+            onChange={(s) => { if (s === 'breakdown') haptic.warn(); else haptic.tap(); setTripStatusNow(s); }} onLastTrip={changeLastTrip}
           />
 
           <button className="today-card" onClick={() => navigate('more/earnings')}>

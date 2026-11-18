@@ -191,3 +191,29 @@ export function Avatar({ url, name, size = 48, className = '' }) {
     </span>
   );
 }
+
+// Grey shimmering rows shown while something loads, so the page doesn't jump.
+export function Skeleton({ rows = 3 }) {
+  return (
+    <div className="skeleton" aria-busy="true" aria-label="Loading">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="skeleton-row">
+          <span className="skeleton-dot" />
+          <span className="skeleton-lines"><i /><i /></span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// A whole page loading (e.g. the first time a page is downloaded).
+export function PageSkeleton() {
+  return (
+    <div className="page">
+      <div className="page-body">
+        <div className="skeleton-title" />
+        <Skeleton rows={4} />
+      </div>
+    </div>
+  );
+}

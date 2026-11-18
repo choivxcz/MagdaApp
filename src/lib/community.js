@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { supabase } from './supabase.js';
 import { distanceMeters } from './geo.js';
+import { isDataSaver } from './prefs.js';
 
 export const TIP_CATEGORIES = {
   route_change: { label: 'Route change', icon: 'routes', hint: 'The jeepney now uses a different street' },
@@ -83,7 +84,8 @@ export const tipAge = (d) => {
 };
 
 // Shared, lightly cached list (refreshed every 5 minutes while in use).
-const REFRESH_MS = 5 * 60 * 1000;
+// Tips change slowly: every 10 minutes (30 with Data saver) is plenty.
+const refreshMs = () => (isDataSaver() ? 30 : 10) * 60 * 1000;
 let state = { routeId: null, tips: [], loadedAt: 0, error: '' };
 const listeners = new Set();
 const set = (patch) => { state = { ...state, ...patch }; listeners.forEach((l) => l()); };
@@ -102,13 +104,13 @@ export function useTips(routeId, userKey = null) {
   const snap = useSyncExternalStore((cb) => { listeners.add(cb); return () => listeners.delete(cb); }, () => state);
   useEffect(() => {
     if (!supabase) return undefined;
-    if (state.routeId !== routeId || Date.now() - state.loadedAt > REFRESH_MS) load(routeId);
-    const t = setInterval(() => { if (!document.hidden) load(routeId); }, REFRESH_MS);
+    if (state.routeId !== routeId || Date.now() - state.loadedAt > refreshMs()) load(routeId);
+    const t = setInterval(() => { if (!document.hidden) load(routeId); }, refreshMs());
     return () => clearInterval(t);
   }, [routeId]);
   useEffect(() => { if (supabase && state.loadedAt) load(routeId); }, [userKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const reload = useCallback(() => load(routeId), [routeId]);
   const patchTip = useCallback((id, patch) => set({ tips: state.tips.map((t) => (t.id === id ? { ...t, ...patch } : t)) }), []);
   const removeTip = useCallback((id) => set({ tips: state.tips.filter((t) => t.id !== id) }), []);
-  return { tips: snap.routeId === routeId ? snap.tips : [], error: snap.error, reload, patchTip, removeTip };
+  return { tips: snap.routeId === routeId ? snap.tips : [], loaded: snap.routeId === routeId && snap.loadedAt > 0, error: snap.error, reload, patchTip, removeTip };
 }

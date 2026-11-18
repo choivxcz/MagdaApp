@@ -1,6 +1,7 @@
 // Community tips: local commuters share what maps don't know.
 import { useState } from 'react';
-import { PageHeader } from '../components/ui.jsx';
+import { PageHeader, Skeleton } from '../components/ui.jsx';
+import { haptic } from '../lib/haptics.js';
 import Icon from '../components/Icon.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { setPrefs } from '../lib/prefs.js';
@@ -39,7 +40,7 @@ export function TipCard({ tip, route, user, isAdmin, onVote, onDelete, onHide })
 
 export default function CommunityScreen({ route }) {
   const { user, isAdmin } = useAuth();
-  const { tips, error, reload, patchTip, removeTip } = useTips(route.id, user?.id ?? null);
+  const { tips, loaded, error, reload, patchTip, removeTip } = useTips(route.id, user?.id ?? null);
   const [filter, setFilter] = useState('all');
   const [writing, setWriting] = useState(false);
   const [category, setCategory] = useState('boarding');
@@ -62,6 +63,7 @@ export default function CommunityScreen({ route }) {
       setStopId('');
       setPoint(null);
       setWriting(false);
+      haptic.success();
       setMsg({ kind: 'ok', text: 'Thanks! Your tip is now visible to other commuters.' });
       await reload();
     } catch (err) {
@@ -82,6 +84,7 @@ export default function CommunityScreen({ route }) {
 
   async function vote(tip) {
     try {
+      haptic.tap();
       const r = await toggleHelpful(tip.id);
       if (r) patchTip(tip.id, { helpful: r.helpful, voted: r.voted });
     } catch (err) {
@@ -171,7 +174,9 @@ export default function CommunityScreen({ route }) {
           ))}
         </div>
 
-        {shown.length ? (
+        {!loaded && !error && !isDemo ? (
+          <Skeleton rows={3} />
+        ) : shown.length ? (
           <div className="tip-list">
             {shown.map((t) => <TipCard key={t.id} tip={t} route={route} user={user} isAdmin={isAdmin} onVote={vote} onDelete={remove} onHide={hide} />)}
           </div>

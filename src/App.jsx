@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
-import { usePrefs } from './lib/prefs.js';
+import { usePrefs, useDataSaver } from './lib/prefs.js';
 import { useJeepneys } from './lib/useJeepneys.js';
 import { prepareRoute } from './lib/geo.js';
 import { isDemo } from './lib/supabase.js';
@@ -12,7 +12,8 @@ import MapScreen from './screens/MapScreen.jsx';
 import RoutesScreen from './screens/RoutesScreen.jsx';
 import SavedScreen from './screens/SavedScreen.jsx';
 import MoreScreen from './screens/MoreScreen.jsx';
-import DriveScreen from './screens/DriveScreen.jsx';
+// Only drivers need the Drive tab: riders never download it.
+const DriveScreen = lazy(() => import('./screens/DriveScreen.jsx'));
 import NewPasswordScreen from './screens/NewPasswordScreen.jsx';
 import routeData from './data/route-magdalena-santa-cruz.json';
 
@@ -65,7 +66,13 @@ function Shell() {
   const current = tabs.some((t) => t.id === tab) ? tab : 'map';
 
   // The Drive tab uses it too, for the gap to the jeepneys ahead and behind.
-  const live = useJeepneys(route, !gate && (current === 'map' || current === 'routes' || current === 'drive'));
+  // How often to check for jeepney updates. Fast only while the rider is
+  // watching for their jeepney; slower when browsing; slower still with
+  // Data saver. (Each check downloads only what changed.)
+  const saver = useDataSaver();
+  const [tracking, setTracking] = useState(false);
+  const pollMs = current === 'map' ? (tracking ? 5000 : 12000) : current === 'drive' ? 15000 : 20000;
+  const live = useJeepneys(route, !gate && (current === 'map' || current === 'routes' || current === 'drive'), saver ? Math.max(10000, pollMs * 2) : pollMs);
 
   const openOnMap = useCallback((request) => {
     setMapRequest({ ...request, at: Date.now() });
@@ -90,11 +97,13 @@ function Shell() {
       <main className="content">
         {/* Map and Drive stay mounted so the map and an active trip survive tab switches. */}
         <div className="screen" hidden={current !== 'map'}>
-          <MapScreen route={route} jeepneys={live.jeepneys} error={live.error} request={mapRequest} visible={current === 'map'} onRequest={openOnMap} />
+          <MapScreen route={route} jeepneys={live.jeepneys} error={live.error} request={mapRequest} visible={current === 'map'} onRequest={openOnMap} onTracking={setTracking} />
         </div>
         {driver && user && (
           <div className="screen" hidden={current !== 'drive'}>
-            <DriveScreen key={user.id} route={route} userId={user.id} driver={driver} visible={current === 'drive'} jeepneys={live.jeepneys} onTripChange={setDriverOnTrip} />
+            <Suspense fallback={<div className="splash small"><Logo size={56} /></div>}>
+              <DriveScreen key={user.id} route={route} userId={user.id} driver={driver} visible={current === 'drive'} jeepneys={live.jeepneys} onTripChange={setDriverOnTrip} />
+            </Suspense>
           </div>
         )}
         {current === 'routes' && <RoutesScreen route={route} jeepneys={live.jeepneys} sub={sub} openOnMap={openOnMap} />}

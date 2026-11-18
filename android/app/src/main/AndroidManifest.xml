@@ -49,5 +49,7 @@
     <!-- GPS: riders find their pickup point, drivers share position during a trip -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- A small buzz on important taps (can be turned off in Preferences). -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 </manifest>

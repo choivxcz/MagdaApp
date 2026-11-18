@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { PageHeader, Segmented, Avatar } from '../components/ui.jsx';
+import { PageHeader, Segmented, Avatar, Skeleton } from '../components/ui.jsx';
 import { photoUrl } from '../lib/photos.js';
 import Icon from '../components/Icon.jsx';
 import { useAuth } from '../lib/auth.jsx';
@@ -95,7 +95,7 @@ function Drivers({ onChange }) {
       </div>
       {error && <p className="warn">{error}</p>}
       {rows === null ? (
-        <p className="hint">Loading…</p>
+        <Skeleton rows={3} />
       ) : shown.length === 0 ? (
         <p className="hint center">{filter === 'pending' ? 'No applications waiting. All caught up.' : 'Nobody here.'}</p>
       ) : (
@@ -181,7 +181,7 @@ function Reports() {
       </div>
       {error && <p className="warn">{error}</p>}
       {rows === null ? (
-        <p className="hint">Loading…</p>
+        <Skeleton rows={3} />
       ) : shown.length === 0 ? (
         <p className="hint center">{filter === 'open' ? 'No open reports.' : 'No resolved reports yet.'}</p>
       ) : (
@@ -254,7 +254,7 @@ function Tips() {
       </div>
       {error && <p className="warn">{error}</p>}
       {rows === null ? (
-        <p className="hint">Loading…</p>
+        <Skeleton rows={3} />
       ) : shown.length === 0 ? (
         <p className="hint center">{filter === 'visible' ? 'No tips yet.' : 'No hidden tips.'}</p>
       ) : (
@@ -308,7 +308,7 @@ function SosAlerts() {
       </div>
       {error && <p className="warn">{error}</p>}
       {rows === null ? (
-        <p className="hint">Loading…</p>
+        <Skeleton rows={3} />
       ) : shown.length === 0 ? (
         <p className="hint center">{filter === 'open' ? 'No open SOS alerts.' : 'No resolved alerts yet.'}</p>
       ) : (

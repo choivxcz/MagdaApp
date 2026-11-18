@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { PageHeader, navigate } from '../components/ui.jsx';
+import { PageHeader, Skeleton, navigate } from '../components/ui.jsx';
 import Icon from '../components/Icon.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { listSavedTrips, deleteSavedTrip, deleteSavedPlace, tripPlaces, PLACE_KINDS } from '../lib/account.js';
@@ -121,7 +121,7 @@ export default function SavedScreen({ route, openOnMap }) {
 
             <div className="section-label"><span>Trips</span>{trips?.length > 0 && <span>{trips.length}</span>}</div>
             {trips === null ? (
-              <p className="hint">Loading…</p>
+              <Skeleton rows={2} />
             ) : trips.length === 0 ? (
               <div className="empty compact">
                 <p>On the Map, choose where you start and where you’re going, then tap the heart.</p>

@@ -14,6 +14,26 @@ maplibregl.setWorkerUrl(workerUrl);
 // Free OpenStreetMap-based tiles, no API key needed.
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 
+// Jeepneys glide to their new spot instead of jumping, so the map feels
+// alive even with fewer updates (which saves data). Big jumps (a phone that
+// was out of signal) and "reduce motion" phones just move.
+const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+function glide(marker, to, ms = 1600) {
+  cancelAnimationFrame(marker.glideFrame);
+  const from = marker.getLngLat();
+  const dx = to[0] - from.lng;
+  const dy = to[1] - from.lat;
+  if (reducedMotion() || document.hidden || Math.abs(dx) + Math.abs(dy) > 0.02) { marker.setLngLat(to); return; }
+  const t0 = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / ms);
+    const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2; // ease in-out
+    marker.setLngLat([from.lng + dx * e, from.lat + dy * e]);
+    if (k < 1) marker.glideFrame = requestAnimationFrame(step);
+  };
+  marker.glideFrame = requestAnimationFrame(step);
+}
+
 function makeEl(className, text) {
   const el = document.createElement('div');
   el.className = className;
@@ -444,7 +464,7 @@ export default function MapView({
         marker = new maplibregl.Marker({ element: el }).setLngLat([j.lng, j.lat]).addTo(map);
         jeepMarkers.current.set(j.id, marker);
       } else {
-        marker.setLngLat([j.lng, j.lat]);
+        glide(marker, [j.lng, j.lat]);
       }
       const el = marker.getElement();
       fillJeepMarker(el, j);
@@ -452,6 +472,7 @@ export default function MapView({
     }
     for (const [id, marker] of jeepMarkers.current) {
       if (!seen.has(id)) {
+        cancelAnimationFrame(marker.glideFrame);
         marker.remove();
         jeepMarkers.current.delete(id);
       }

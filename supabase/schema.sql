@@ -889,3 +889,37 @@ end;
 $$;
 revoke all on function public.admin_resolve_sos(uuid, text) from public, anon;
 grant execute on function public.admin_resolve_sos(uuid, text) to authenticated;
+
+-- =====================================================================
+-- 13. Data saving: live jeepney updates in a compact form, and only the
+--     jeepneys that changed since the rider's last check.
+--     Each row: [driver id, plate, direction, lat, lng, seats total,
+--                seats taken, trip status, last trip, active, updated (s)]
+--     Coordinates are rounded to 5 decimals (about 1 m).
+-- =====================================================================
+
+create or replace function public.live_jeeps(p_route_id text, p_since timestamptz default null)
+returns json
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select json_build_object(
+    'now', floor(extract(epoch from now()) * 1000),
+    'rows', coalesce(json_agg(json_build_array(
+      l.driver_id, l.plate, l.direction,
+      round(l.lat::numeric, 5), round(l.lng::numeric, 5),
+      l.seats_total, l.seats_taken, l.trip_status, l.last_trip, l.is_active,
+      floor(extract(epoch from l.updated_at))
+    )), '[]'::json)
+  )
+  from public.jeepney_locations l
+  where l.route_id = p_route_id
+    and l.updated_at > coalesce(p_since, now() - interval '2 minutes')
+    -- A first (full) check only needs jeepneys on a trip; later checks also
+    -- need the ones that just ended, so the app can remove them.
+    and (p_since is not null or l.is_active);
+$$;
+revoke all on function public.live_jeeps(text, timestamptz) from public;
+grant execute on function public.live_jeeps(text, timestamptz) to anon, authenticated;

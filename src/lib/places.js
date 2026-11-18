@@ -104,13 +104,14 @@ export async function nameForPoint(point, { signal } = {}) {
 }
 
 // Debounced search with stale answers ignored. onResult(list | null, error).
-export function makeSearcher(delay = 350) {
+// With Data saver: wait longer and for more letters, so fewer searches go out.
+export function makeSearcher(delay = 350, minChars = 3) {
   let timer = null;
   let ctl = null;
   return (query, opts, onResult) => {
     clearTimeout(timer);
     ctl?.abort();
-    if (String(query ?? '').trim().length < 3) { onResult([], null); return; }
+    if (String(query ?? '').trim().length < minChars) { onResult([], null); return; }
     timer = setTimeout(async () => {
       ctl = new AbortController();
       const mine = ctl;

@@ -44,6 +44,45 @@ export async function fetchActiveJeepneys(route) {
   }));
 }
 
+// Only what changed since `since` (ms, server clock), in a compact form:
+// most checks download a few hundred bytes instead of every jeepney.
+// Returns { now, rows, full } or null when the database doesn't have the
+// live_jeeps function yet (then use fetchActiveJeepneys).
+let hasLiveRpc = true;
+export async function fetchJeepneyUpdates(route, since) {
+  if (!supabase || !hasLiveRpc) return null;
+  const { data, error } = await supabase.rpc('live_jeeps', {
+    p_route_id: route.id,
+    p_since: since ? new Date(since).toISOString() : null,
+  });
+  if (error) {
+    if (/live_jeeps/.test(error.message) && /could not find|schema cache|does not exist/i.test(error.message)) {
+      hasLiveRpc = false;
+      return null;
+    }
+    throw error;
+  }
+  return {
+    now: data.now,
+    full: !since,
+    rows: (data.rows ?? []).map((r) => ({
+      id: r[0],
+      plate: r[1],
+      direction: r[2],
+      lat: Number(r[3]),
+      lng: Number(r[4]),
+      seatsTotal: r[5],
+      seatsTaken: r[6],
+      tripStatus: r[7] ?? 'on_trip',
+      lastTrip: !!r[8],
+      active: !!r[9],
+      updatedAt: new Date(r[10] * 1000),
+    })),
+  };
+}
+
+export const STALE_MS = STALE_AFTER_MS;
+
 // Plate number, route and seat capacity are filled in by the database
 // from the driver's approved record, so a driver cannot fake them.
 export async function sendLocation({ userId, direction, coords, seatsTaken, tripStatus = 'on_trip', lastTrip = false }) {

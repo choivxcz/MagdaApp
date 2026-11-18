@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { PageHeader, MenuGroup, MenuRow, Segmented, Avatar, navigate } from '../components/ui.jsx';
 import PhotoField from '../components/PhotoField.jsx';
 import Icon, { Logo } from '../components/Icon.jsx';
@@ -9,9 +9,15 @@ import { updateProfile, fileReport, listMyReports, deleteMyAccount } from '../li
 import { computeFare, peso, FARE_RULES, TRICYCLE_RULES } from '../lib/fare.js';
 import { DIRECTIONS, DIRECTION_KEYS } from '../lib/directions.js';
 
-import DriverApplyScreen from './DriverApplyScreen.jsx';
-import AdminScreen from './AdminScreen.jsx';
-import EarningsScreen from './EarningsScreen.jsx';
+import { PageSkeleton } from '../components/ui.jsx';
+import { isDataSaver } from '../lib/prefs.js';
+import { useDataUsed, fmtBytes, resetDataUsed } from '../lib/dataMeter.js';
+import { phoneWantsSavings } from '../lib/prefs.js';
+
+// Pages only some people open are downloaded when first opened.
+const DriverApplyScreen = lazy(() => import('./DriverApplyScreen.jsx'));
+const AdminScreen = lazy(() => import('./AdminScreen.jsx'));
+const EarningsScreen = lazy(() => import('./EarningsScreen.jsx'));
 
 const APP_VERSION = '0.6.0';
 
@@ -23,9 +29,9 @@ export default function MoreScreen({ route, sub }) {
     case 'account': return <Account />;
     case 'about': return <About />;
     case 'privacy': return <Privacy />;
-    case 'driver': return <DriverApplyScreen />;
-    case 'admin': return <AdminScreen />;
-    case 'earnings': return <EarningsScreen />;
+    case 'driver': return <Suspense fallback={<PageSkeleton />}><DriverApplyScreen /></Suspense>;
+    case 'admin': return <Suspense fallback={<PageSkeleton />}><AdminScreen /></Suspense>;
+    case 'earnings': return <Suspense fallback={<PageSkeleton />}><EarningsScreen /></Suspense>;
     default: return <MoreMenu />;
   }
 }
@@ -103,6 +109,8 @@ function MoreMenu() {
             <Segmented small value={prefs.fareType} onChange={chooseFare}
               options={[['regular', 'Regular'], ['discounted', 'Discounted']]} />
           } />
+          <MenuRow icon="layers" title="Data saver" sub={isDataSaver(prefs) ? 'On: fewer updates, less load used' : 'Off'} onClick={() => navigate('more/preferences')}
+            right={<span className={`pill ${isDataSaver(prefs) ? 'ok-pill' : ''}`}>{prefs.dataSaver === 'auto' ? 'Auto' : prefs.dataSaver === 'on' ? 'On' : 'Off'}</span>} />
         </MenuGroup>
 
         <MenuGroup title="Commute tools">
@@ -161,8 +169,47 @@ function Preferences() {
           <div className="inset"><Segmented value={prefs.theme} onChange={(theme) => setPrefs({ theme })}
             options={[['system', 'Auto'], ['light', 'Light'], ['dark', 'Dark']]} /></div>
         </MenuGroup>
+        <DataSettings />
+        <MenuGroup title="Feel">
+          <MenuRow icon="sparkle" title="Vibrate on taps" sub="A small buzz when you choose, save or start a trip (Android)"
+            right={<input type="checkbox" className="switch" checked={prefs.haptics !== false} onChange={(e) => setPrefs({ haptics: e.target.checked })} aria-label="Vibrate on taps" />} />
+        </MenuGroup>
       </div>
     </div>
+  );
+}
+
+// Data saver and how much data the app used, for riders and drivers on load.
+function DataSettings() {
+  const prefs = usePrefs();
+  const used = useDataUsed();
+  const on = isDataSaver(prefs);
+  return (
+    <MenuGroup title="Mobile data">
+      <div className="choice-list inset">
+        {[
+          ['auto', 'Auto', phoneWantsSavings() ? 'On now: your phone’s Data Saver is on or the signal is slow' : 'Turns on when your phone’s Data Saver is on or the signal is slow (2G)'],
+          ['on', 'Always save data', 'Fewer jeepney updates, photos only when you tap, fewer searches'],
+          ['off', 'Off', 'Fastest updates'],
+        ].map(([id, title, sub]) => (
+          <button key={id} className={`choice ${prefs.dataSaver === id ? 'on' : ''}`} onClick={() => setPrefs({ dataSaver: id })}>
+            <span className="radio" />
+            <span><b>{title}</b><small>{sub}</small></span>
+          </button>
+        ))}
+      </div>
+      <div className="inset data-meter">
+        <div className="data-meter-row">
+          <span><small>Today</small><b>{fmtBytes(used.today)}</b></span>
+          <span><small>This month</small><b>{fmtBytes(used.thisMonth)}</b></span>
+          <button className="link-btn small" onClick={resetDataUsed}>Reset</button>
+        </div>
+        <p className="fineprint">
+          About how much this app’s live updates, searches and directions used on this phone. Map pictures download once and are
+          then kept on your phone{on ? '' : ''}. Updates pause when the app is in the background. Data saver is {on ? 'on' : 'off'}.
+        </p>
+      </div>
+    </MenuGroup>
   );
 }
 

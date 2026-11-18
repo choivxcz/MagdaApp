@@ -9,6 +9,8 @@ import { landmarks } from '../lib/landmarkData.js';
 import { distanceMeters } from '../lib/geo.js';
 import { addRecent, clearRecents, useRecents } from '../lib/recents.js';
 import { normalize } from '../lib/assistant/knowledge.js';
+import { useDataSaver } from '../lib/prefs.js';
+import { haptic } from '../lib/haptics.js';
 
 const FIELD_TEXT = {
   from: { placeholder: 'Where are you?', aria: 'From' },
@@ -34,7 +36,9 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
   const [query, setQuery] = useState('');
   const [online, setOnline] = useState({ list: [], loading: false, error: null });
   const recents = useRecents();
-  const searcher = useMemo(() => makeSearcher(), []);
+  const saver = useDataSaver();
+  const minChars = saver ? 4 : 3;
+  const searcher = useMemo(() => makeSearcher(saver ? 700 : 350, minChars), [saver, minChars]);
   const box = useMemo(() => serviceBox(route), [route]);
   const inputs = { from: useRef(null), to: useRef(null) };
   const panelRef = useRef(null);
@@ -51,7 +55,7 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
   useEffect(() => {
     if (!active) return;
     const q = query.trim();
-    if (q.length < 3) { setOnline({ list: [], loading: false, error: null }); return; }
+    if (q.length < minChars) { setOnline({ list: [], loading: false, error: null }); return; }
     setOnline((o) => ({ ...o, loading: true, error: null }));
     searcher(q, { box, near }, (list, error) => setOnline({ list: list ?? [], loading: false, error }));
   }, [query, active]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -180,7 +184,7 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
             </>
           )}
 
-          {query.trim().length >= 3 && (
+          {query.trim().length >= minChars && (
             <>
               <div className="place-head">Places {online.loading && <span className="spinner" aria-label="Searching" />}</div>
               {places.length > 0 ? (
@@ -195,7 +199,7 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
               )}
             </>
           )}
-          {query.trim().length > 0 && query.trim().length < 3 && <p className="place-empty">Type a few more letters to search all places.</p>}
+          {query.trim().length > 0 && query.trim().length < minChars && <p className="place-empty">Type a few more letters to search all places.</p>}
           <p className="place-fine">Place search © OpenStreetMap contributors (Photon).</p>
         </div>
       )}

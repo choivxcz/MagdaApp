@@ -6,7 +6,8 @@ import { walkMinutes, walkingPath, roadPath } from '../lib/walking.js';
 import { useSakayan } from '../lib/useSakayan.js';
 import { peso } from '../lib/fare.js';
 import { DIRECTIONS, DIRECTION_KEYS, seatStatus } from '../lib/directions.js';
-import { usePrefs, setPrefs } from '../lib/prefs.js';
+import { usePrefs, setPrefs, isDataSaver } from '../lib/prefs.js';
+import { haptic } from '../lib/haptics.js';
 import { useAuth } from '../lib/auth.jsx';
 import { saveTrip, savePlace, PLACE_KINDS } from '../lib/account.js';
 import { useSavedPlaces } from '../lib/useSavedPlaces.js';
@@ -29,6 +30,7 @@ import { addRecent } from '../lib/recents.js';
 import { inService, riderStatusText } from '../lib/tripStatus.js';
 
 const AVG_SPEED_MPS = 20 / 3.6; // jeepneys average ~20 km/h with stops
+const SHEET_MIN_PX = 236; // the small panel's height (styles.css --sheet-h)
 
 // The card for a landmark tapped on the map: what it is, how close the
 // jeepney passes, and buttons to go there or start from there.
@@ -116,7 +118,7 @@ function useStepPaths(option, skipFirstWalk) {
 
 const PICK_TEXT = { from: 'Tap the map where you’ll start', to: 'Tap the map where you’re going' };
 
-export default function MapScreen({ route, jeepneys, error, request, visible, onRequest }) {
+export default function MapScreen({ route, jeepneys, error, request, visible, onRequest, onTracking }) {
   const prefs = usePrefs();
   const { user } = useAuth();
   const network = useMemo(() => networkFromRoutes([route]), [route]);
@@ -138,6 +140,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   const closeJeep = useCallback(() => setOpenJeepId(null), []);
   const [chatOpen, setChatOpen] = useState(false);
   const handleDrag = useRef(null);
+  const screenRef = useRef(null);
   const [chat, setChat] = useState({ messages: [GREETING], busy: false, memory: {} });
   const closeChat = useCallback(() => setChatOpen(false), []);
 
@@ -149,7 +152,9 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   const stopById = (id) => stops.find((s) => s.id === id);
 
   // Give a tapped or GPS spot a readable name ("Near Jollibee, Barangay III").
+  // (Skipped with Data saver: the spot is then just "Pinned spot".)
   const nameLater = useCallback((setter, place) => {
+    if (isDataSaver()) return;
     nameForPoint(place.point).then((name) => {
       if (!name) return;
       setter((cur) => (cur && cur.point === place.point ? { ...cur, ...(cur.kind === 'gps' ? { nearName: name } : { label: name }) } : cur));
@@ -223,6 +228,10 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
     });
   }, [baseOption, sakayan, paths, useSakayanWalk]);
   const firstRide = option?.steps.find((s) => s.type === 'ride') ?? null;
+  // While a trip is planned, the app checks for jeepneys more often (to
+  // show the next one coming); otherwise less often, to save data.
+  const tracking = !!firstRide && visible;
+  useEffect(() => { onTracking?.(tracking); }, [tracking, onTracking]);
   const activeDirection = firstRide?.direction ?? (!to && dirFilter !== 'all' ? dirFilter : null);
 
   const shown = jeepneys.filter((j) => (!onlyWithSeats || seatStatus(j).level !== 'full') && (!activeDirection || j.direction === activeDirection));
@@ -321,6 +330,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
       setPickTarget(null);
       return;
     }
+    haptic.tap();
     setSelectedLm(l);
   }
 
@@ -332,6 +342,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   }
 
   function onChoose(field, place) {
+    haptic.tap();
     setSelectedId(null);
     if (field === 'from') chooseFrom(place);
     else {
@@ -341,6 +352,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   }
 
   function swap() {
+    haptic.tap();
     if (!from || !to) return;
     setSelectedId(null);
     setFrom(to);
@@ -399,6 +411,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
     const simple = option?.rides === 1 && option.steps.length === 1 && from.stopId && to.stopId;
     try {
       await saveTrip({ name: `${shortName(start)} → ${shortName(to)}`, from: start, to, direction: simple ? firstRide.direction : null });
+      haptic.success();
       setMsg({ kind: 'ok', text: 'Trip saved to your Saved tab.' });
     } catch (e) {
       setMsg({ kind: 'warn', text: `Couldn’t save: ${e.message}` });
@@ -412,6 +425,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
     try {
       await savePlace({ placeKind, label: label.trim(), point: to.point, stopId: to.stopId });
       await saved.reload();
+      haptic.success();
       setMsg({ kind: 'ok', text: `Saved as ${label.trim()}. Find it when you search, and in the Saved tab.` });
     } catch (e) {
       setMsg({ kind: 'warn', text: `Couldn’t save: ${e.message}` });
@@ -433,7 +447,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   }[plan.reason];
 
   return (
-    <div className={`map-screen ${expanded ? 'sheet-expanded' : ''} ${searchOpen ? 'searching' : ''}`}>
+    <div ref={screenRef} className={`map-screen ${expanded ? 'sheet-expanded' : ''} ${searchOpen ? 'searching' : ''}`}>
       <MapView
         route={route} jeepneys={shown} pickup={from?.point ?? null} dest={to?.point ?? null} me={me} guide={guide} onPick={onMapTap} onJeepTap={setOpenJeepId}
         activeDirection={activeDirection} visible={visible} onReady={setMap}
@@ -495,16 +509,45 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
       >
         <button
           className="sheet-handle" aria-label={expanded ? 'Show less' : 'Show more'} aria-expanded={expanded}
+          // The panel follows the finger, then settles open or closed
+          // depending on where it was let go and how fast it was flicked.
           onPointerDown={(e) => {
-            handleDrag.current = { y: e.clientY, swiped: false };
+            handleDrag.current = { y: e.clientY, startH: sheetRef.current.getBoundingClientRect().height, lastY: e.clientY, lastT: e.timeStamp, v: 0, moved: false, swiped: false };
             e.currentTarget.setPointerCapture(e.pointerId); // keep following the finger off the handle
           }}
-          onPointerUp={(e) => {
+          onPointerMove={(e) => {
             const d = handleDrag.current;
-            if (!d) return;
+            const screen = screenRef.current;
+            if (!d || !screen) return;
             const dy = e.clientY - d.y;
-            // Swipe up opens the panel, swipe down closes it.
-            if (Math.abs(dy) > 25) { d.swiped = true; setExpanded(dy < 0); }
+            if (!d.moved && Math.abs(dy) < 6) return;
+            d.moved = true;
+            const dt = Math.max(1, e.timeStamp - d.lastT);
+            d.v = (e.clientY - d.lastY) / dt; // px per ms, + = down
+            d.lastY = e.clientY;
+            d.lastT = e.timeStamp;
+            const max = screen.clientHeight * 0.68;
+            const h = Math.min(max + 16, Math.max(SHEET_MIN_PX - 24, d.startH - dy));
+            d.h = h;
+            screen.classList.add('sheet-dragging');
+            screen.style.setProperty('--sheet-h', `${h}px`);
+          }}
+          onPointerUp={() => {
+            const d = handleDrag.current;
+            const screen = screenRef.current;
+            if (!d || !d.moved || !screen) return;
+            d.swiped = true;
+            const max = screen.clientHeight * 0.68;
+            const open = d.v < -0.35 ? true : d.v > 0.35 ? false : d.h > (SHEET_MIN_PX + max) / 2;
+            screen.classList.remove('sheet-dragging');
+            screen.style.removeProperty('--sheet-h');
+            if (open !== expanded) haptic.tap();
+            setExpanded(open);
+          }}
+          onPointerCancel={() => {
+            screenRef.current?.classList.remove('sheet-dragging');
+            screenRef.current?.style.removeProperty('--sheet-h');
+            handleDrag.current = null;
           }}
           onClick={() => {
             if (handleDrag.current?.swiped) { handleDrag.current = null; return; }
@@ -528,7 +571,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
                 </span>
                 <div className="trip-to">To {to.label}</div>
                 <div className="fare-line">
-                  <b className="fare-big">{fareText(option, fareMain)}</b>
+                  <b key={`${option.id}|${fareMain}`} className="fare-big pop">{fareText(option, fareMain)}</b>
                   {option.fare.regular > 0 && (
                     <button className="link-btn small" onClick={() => setPrefs({ fareType: fareOther })}>
                       {fareLabel[fareOther]} {peso(option.fare[fareOther])}
@@ -538,7 +581,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
               </div>
               <button className="round-action" onClick={onSave} aria-label="Save trip"><Icon name="heart" size={22} /></button>
             </div>
-            <OptionCards options={options.map((o) => (o.id === option.id ? option : o))} selectedId={option.id} onSelect={setSelectedId} fareType={fareMain} />
+            <OptionCards options={options.map((o) => (o.id === option.id ? option : o))} selectedId={option.id} onSelect={(id) => { haptic.tap(); setSelectedId(id); }} fareType={fareMain} />
           </>
         ) : (
           <div className="sheet-head">
@@ -586,7 +629,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
         {error && <p className="warn">Couldn’t load jeepneys: {error}</p>}
 
         {firstRide && (
-          <div className={`next-jeep ${next ? '' : 'none'}`}>
+          <div className={`next-jeep ${next ? '' : 'none'} ${next && next.gap <= 100 ? 'arriving' : ''}`}>
             <Icon name="clock" size={18} />
             {next
               ? <span><b>{next.gap <= 100 ? 'Arriving now' : `Next jeepney in ~${minutes(next.gap)} min`}</b> · {next.plate} · {seatStatus(next).text}</span>

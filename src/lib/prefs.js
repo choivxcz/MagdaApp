@@ -2,7 +2,15 @@
 import { useSyncExternalStore } from 'react';
 
 const KEY = 'sakay:prefs:v1';
-const DEFAULTS = { onboarded: false, guest: false, fareType: 'regular', theme: 'system', showLandmarks: true };
+const DEFAULTS = {
+  onboarded: false,
+  guest: false,
+  fareType: 'regular',
+  theme: 'system',
+  showLandmarks: true,
+  dataSaver: 'auto', // 'auto' (follow the phone) | 'on' | 'off'
+  haptics: true,
+};
 
 function load() {
   try {
@@ -25,6 +33,8 @@ export function setPrefs(patch) {
   listeners.forEach((l) => l());
 }
 
+export const getPrefs = () => state;
+
 export function usePrefs() {
   return useSyncExternalStore(
     (cb) => {
@@ -34,3 +44,14 @@ export function usePrefs() {
     () => state,
   );
 }
+
+// ---- Data saver ----------------------------------------------------------
+// "Auto" turns it on when the phone's own Data Saver is on, or the
+// connection is very slow (2G).
+const connection = () => (typeof navigator !== 'undefined' ? navigator.connection : null);
+export const phoneWantsSavings = () => {
+  const c = connection();
+  return !!c && (c.saveData === true || ['slow-2g', '2g'].includes(c.effectiveType));
+};
+export const isDataSaver = (p = state) => p.dataSaver === 'on' || (p.dataSaver === 'auto' && phoneWantsSavings());
+export const useDataSaver = () => isDataSaver(usePrefs());

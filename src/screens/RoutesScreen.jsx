@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { PageHeader, Segmented, navigate } from '../components/ui.jsx';
+import { lazy, Suspense, useState } from 'react';
+import { PageHeader, PageSkeleton, Segmented, navigate } from '../components/ui.jsx';
 import Icon from '../components/Icon.jsx';
 import { computeFare, peso } from '../lib/fare.js';
 import { DIRECTIONS, DIRECTION_KEYS, seatStatus } from '../lib/directions.js';
@@ -7,14 +7,16 @@ import { usePrefs } from '../lib/prefs.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useTips, TIP_CATEGORIES, tipAge } from '../lib/community.js';
 import { stopPlace } from '../lib/places.js';
-import CommunityScreen from './CommunityScreen.jsx';
+
+
+const CommunityScreen = lazy(() => import('./CommunityScreen.jsx'));
 
 export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
   const [query, setQuery] = useState('');
   const { user } = useAuth();
   const { tips } = useTips(route.id, user?.id ?? null);
   if (sub === 'detail') return <RouteDetail route={route} jeepneys={jeepneys} openOnMap={openOnMap} />;
-  if (sub === 'community') return <CommunityScreen route={route} />;
+  if (sub === 'community') return <Suspense fallback={<PageSkeleton />}><CommunityScreen route={route} /></Suspense>;
 
   const q = query.trim().toLowerCase();
   const out = route.legs.to_santa_cruz;
