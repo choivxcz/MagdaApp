@@ -1,22 +1,23 @@
 import { useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import { setPrefs, usePrefs } from '../lib/prefs.js';
+import { t } from '../lib/i18n.js';
 
 const SLIDES = [
   {
     icon: 'bus',
     title: 'See jeepneys live',
-    text: 'Watch jeepneys on the Magdalena – Santa Cruz route move on the map, and know when the next one reaches you.',
+    text: t("Watch jeepneys on the Magdalena – Santa Cruz route move on the map, and know when the next one reaches you."),
   },
   {
     icon: 'seat',
     title: 'Know if there’s a seat',
-    text: 'Drivers update how many seats are free, so you can skip the full ones and wait for one with space.',
+    text: t("Drivers update how many seats are free, so you can skip the full ones and wait for one with space."),
   },
   {
     icon: 'fare',
     title: 'Know your fare',
-    text: 'Pick your drop-off and see the estimated fare before you ride, including student, senior and PWD discounts.',
+    text: t("Pick your drop-off and see the estimated fare before you ride, including student, senior and PWD discounts."),
   },
 ];
 
@@ -36,8 +37,8 @@ export default function Onboarding() {
           </>
         ) : (
           <>
-            <h1>Choose your fare type</h1>
-            <p>We’ll show fares for this type first.</p>
+            <h1>{t("Choose your fare type")}</h1>
+            <p>{t("We’ll show fares for this type first.")}</p>
             <div className="choice-list">
               {[
                 ['regular', 'Regular', 'Standard fare'],
@@ -49,7 +50,7 @@ export default function Onboarding() {
                 </button>
               ))}
             </div>
-            <p className="hint">You can change this later in More → Preferences.</p>
+            <p className="hint">{t("You can change this later in More → Preferences.")}</p>
           </>
         )}
       </div>
@@ -59,10 +60,10 @@ export default function Onboarding() {
           {[...SLIDES, null].map((_, i) => <i key={i} className={i === step ? 'on' : ''} />)}
         </div>
         <button className="btn primary wide" onClick={() => (onFareStep ? setPrefs({ onboarded: true }) : setStep(step + 1))}>
-          {onFareStep ? 'Continue' : 'Next'}
+          {onFareStep ? t("Continue") : t("Next")}
         </button>
         {!onFareStep && (
-          <button className="link-btn" onClick={() => setStep(SLIDES.length)}>Skip</button>
+          <button className="link-btn" onClick={() => setStep(SLIDES.length)}>{t("Skip")}</button>
         )}
       </div>
     </div>

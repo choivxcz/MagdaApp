@@ -6,6 +6,7 @@ import Icon from './Icon.jsx';
 import { usePrefs, setPrefs } from '../lib/prefs.js';
 import { sendSos, mapsLink } from '../lib/driverData.js';
 import { isDemo } from '../lib/supabase.js';
+import { t } from '../lib/i18n.js';
 
 const COUNTDOWN_S = 5;
 
@@ -51,57 +52,57 @@ export default function SosSheet({ driver, point, onClose }) {
 
   return (
     <div className="driver-backdrop sos-backdrop" onClick={onClose}>
-      <section className="sos-sheet" role="dialog" aria-modal="true" aria-label="Emergency" onClick={(e) => e.stopPropagation()}>
+      <section className="sos-sheet" role="dialog" aria-modal="true" aria-label={t("Emergency")} onClick={(e) => e.stopPropagation()}>
         <header className="sos-head">
-          <span className="sos-badge">SOS</span>
+          <span className="sos-badge">{t("SOS")}</span>
           <div>
-            <b>Emergency</b>
-            <span className="sub">{point ? 'Your location is ready to share.' : 'Waiting for GPS… you can still call.'}</span>
+            <b>{t("Emergency")}</b>
+            <span className="sub">{point ? t("Your location is ready to share.") : t("Waiting for GPS… you can still call.")}</span>
           </div>
-          <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" size={20} /></button>
+          <button className="icon-btn" onClick={onClose} aria-label={t("Close")}><Icon name="close" size={20} /></button>
         </header>
 
-        <a className="sos-big" href="tel:911"><Icon name="phone" size={24} /> Call 911</a>
+        <a className="sos-big" href="tel:911"><Icon name="phone" size={24} />{' '}{t("Call 911")}</a>
 
         {editing ? (
           <form className="sos-contact" onSubmit={saveContact}>
-            <label className="field"><span className="label">Emergency contact number (family, operator)</span>
-              <input value={contact} onChange={(e) => setContact(e.target.value)} inputMode="tel" placeholder="09XX XXX XXXX" maxLength={20} />
+            <label className="field"><span className="label">{t("Emergency contact number (family, operator)")}</span>
+              <input value={contact} onChange={(e) => setContact(e.target.value)} inputMode="tel" placeholder={t("09XX XXX XXXX")} maxLength={20} />
             </label>
-            <button className="btn" disabled={contact.replace(/[^\d+]/g, '').length < 7}>Save</button>
-            <span className="fineprint">Saved on this phone only.</span>
+            <button className="btn" disabled={contact.replace(/[^\d+]/g, '').length < 7}>{t("Save")}</button>
+            <span className="fineprint">{t("Saved on this phone only.")}</span>
           </form>
         ) : (
           <div className="sos-row">
             <a className="btn sos-text" href={`sms:${number}?body=${encodeURIComponent(message)}`}>
-              <Icon name="send" size={18} /> Text {number} my location
+              <Icon name="send" size={18} />{' '}{t("Text")}{' '}{number}{' '}{t("my location")}
             </a>
-            <button className="link-btn small" onClick={() => setEditing(true)}>Change</button>
+            <button className="link-btn small" onClick={() => setEditing(true)}>{t("Change")}</button>
           </div>
         )}
 
         <div className={`sos-status ${sent === 'sent' ? 'ok' : ''}`}>
           {isDemo ? (
-            <span>Admin alerts work once the database is connected.</span>
+            <span>{t("Admin alerts work once the database is connected.")}</span>
           ) : left != null ? (
             <>
-              <span>Alerting the admin with your location in <b>{left}</b>…</span>
-              <button className="btn small" onClick={() => setLeft(null)}>Cancel</button>
+              <span>{t("Alerting the admin with your location in")}{' '}<b>{left}</b>…</span>
+              <button className="btn small" onClick={() => setLeft(null)}>{t("Cancel")}</button>
             </>
           ) : sent === 'sending' ? (
-            <span>Sending alert…</span>
+            <span>{t("Sending alert…")}</span>
           ) : sent === 'sent' ? (
-            <span><Icon name="check" size={16} /> Admin alerted with your location.</span>
+            <span><Icon name="check" size={16} />{' '}{t("Admin alerted with your location.")}</span>
           ) : sent ? (
-            <span>Couldn’t alert the admin: {sent}</span>
+            <span>{t("Couldn’t alert the admin:")}{' '}{sent}</span>
           ) : (
             <>
-              <span>Admin not alerted.</span>
-              <button className="btn small" onClick={() => setLeft(0)}>Alert admin now</button>
+              <span>{t("Admin not alerted.")}</span>
+              <button className="btn small" onClick={() => setLeft(0)}>{t("Alert admin now")}</button>
             </>
           )}
         </div>
-        <p className="fineprint">For accidents, crimes and medical emergencies call 911 first. Keep yourself and your passengers safe.</p>
+        <p className="fineprint">{t("For accidents, crimes and medical emergencies call 911 first. Keep yourself and your passengers safe.")}</p>
       </section>
     </div>
   );

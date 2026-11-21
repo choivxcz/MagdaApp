@@ -1,6 +1,7 @@
 // Shared layout pieces: page titles, menu rows, bottom navigation.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
+import { t } from '../lib/i18n.js';
 
 export function navigate(path) {
   window.location.hash = `#/${path}`;
@@ -21,7 +22,7 @@ export function PageHeader({ title, subtitle, back, right }) {
   }
   return (
     <header className="page-header">
-      <button className="icon-btn" onClick={() => (typeof back === 'function' ? back() : navigate(back))} aria-label="Back">
+      <button className="icon-btn" onClick={() => (typeof back === 'function' ? back() : navigate(back))} aria-label={t("Back")}>
         <Icon name="back" />
       </button>
       <h1>{title}</h1>
@@ -58,7 +59,7 @@ export function MenuRow({ icon, title, sub, onClick, href, danger, right, badge 
 
 export function BottomNav({ tabs, current }) {
   return (
-    <nav className="bottom-nav" aria-label="Main">
+    <nav className="bottom-nav" aria-label={t("Main")}>
       {tabs.map((t) => (
         <a key={t.id} href={`#/${t.id}`} className={current === t.id ? 'on' : ''} aria-current={current === t.id ? 'page' : undefined}>
           <Icon name={t.icon} size={23} />
@@ -195,7 +196,7 @@ export function Avatar({ url, name, size = 48, className = '' }) {
 // Grey shimmering rows shown while something loads, so the page doesn't jump.
 export function Skeleton({ rows = 3 }) {
   return (
-    <div className="skeleton" aria-busy="true" aria-label="Loading">
+    <div className="skeleton" aria-busy="true" aria-label={t("Loading")}>
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="skeleton-row">
           <span className="skeleton-dot" />

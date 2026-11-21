@@ -10,6 +10,7 @@ import { usePrefs, setPrefs } from '../lib/prefs.js';
 import { isDemo } from '../lib/supabase.js';
 import { listEarnings, saveEarnings, deleteEarnings, net } from '../lib/driverData.js';
 import { useDriverDays, dayStats, today as todayDate } from '../lib/driverDay.js';
+import { t } from '../lib/i18n.js';
 
 const php = (n) => `₱${(Math.round(n * 100) / 100).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 const dayLabel = (d) => new Date(`${d}T12:00:00+08:00`).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -80,8 +81,8 @@ export default function EarningsScreen() {
   if (!driver) {
     return (
       <div className="page">
-        <PageHeader title="Earnings log" back="more" />
-        <div className="page-body"><p className="hint">The earnings log is for approved drivers.</p></div>
+        <PageHeader title={t("Earnings log")} back="more" />
+        <div className="page-body"><p className="hint">{t("The earnings log is for approved drivers.")}</p></div>
       </div>
     );
   }
@@ -116,50 +117,50 @@ export default function EarningsScreen() {
 
   return (
     <div className="page">
-      <PageHeader title="Earnings log" back="more" />
+      <PageHeader title={t("Earnings log")} back="more" />
       <div className="page-body">
         <p className="body-text muted">Track your take-home under the boundary system. Only you can see this; it isn’t shared with your operator or the admin.</p>
-        {isDemo && <p className="hint">The earnings log works once the database is connected.</p>}
+        {isDemo && <p className="hint">{t("The earnings log works once the database is connected.")}</p>}
 
         <form className="card form" onSubmit={save}>
-          <label className="field"><span className="label">Day</span>
+          <label className="field"><span className="label">{t("Day")}</span>
             <input type="date" value={day} max={todayDate()} onChange={(e) => e.target.value && setDay(e.target.value)} />
           </label>
 
           <div className="auto-stats">
-            <span><small>Trips</small><input inputMode="numeric" value={form.trips} onChange={(e) => set('trips')(e.target.value.replace(/\D/g, ''))} aria-label="One-way trips" /></span>
-            <span><small>km</small><input inputMode="decimal" value={form.km} onChange={(e) => set('km')(e.target.value.replace(/[^\d.]/g, ''))} aria-label="Kilometers" /></span>
-            <span><small>Minutes</small><input inputMode="numeric" value={form.minutes} onChange={(e) => set('minutes')(e.target.value.replace(/\D/g, ''))} aria-label="Minutes on trips" /></span>
+            <span><small>{t("Trips")}</small><input inputMode="numeric" value={form.trips} onChange={(e) => set('trips')(e.target.value.replace(/\D/g, ''))} aria-label={t("One-way trips")} /></span>
+            <span><small>{t("km")}</small><input inputMode="decimal" value={form.km} onChange={(e) => set('km')(e.target.value.replace(/[^\d.]/g, ''))} aria-label={t("Kilometers")} /></span>
+            <span><small>{t("Minutes")}</small><input inputMode="numeric" value={form.minutes} onChange={(e) => set('minutes')(e.target.value.replace(/\D/g, ''))} aria-label={t("Minutes on trips")} /></span>
           </div>
           <span className="fineprint">Counted by the Drive tab on this phone; you can correct them.</span>
 
-          <MoneyField label="Kita" hint="all fares collected" value={form.gross} onChange={set('gross')} />
-          <MoneyField label="Krudo" hint="diesel" value={form.fuel} onChange={set('fuel')} />
-          <MoneyField label="Boundary" hint="paid to the operator" value={form.boundary} onChange={set('boundary')} />
-          <MoneyField label="Iba pa" hint="dispatcher, carwash, repairs" value={form.other} onChange={set('other')} />
-          <label className="field"><span className="label">Note (optional)</span>
-            <input value={form.note} onChange={(e) => set('note')(e.target.value)} maxLength={200} placeholder="e.g. traffic sa Pedro Guevarra, maagang uwi" />
+          <MoneyField label={t("Kita")} hint={t("all fares collected")} value={form.gross} onChange={set('gross')} />
+          <MoneyField label={t("Krudo")} hint="diesel" value={form.fuel} onChange={set('fuel')} />
+          <MoneyField label={t("Boundary")} hint={t("paid to the operator")} value={form.boundary} onChange={set('boundary')} />
+          <MoneyField label={t("Iba pa")} hint={t("dispatcher, carwash, repairs")} value={form.other} onChange={set('other')} />
+          <label className="field"><span className="label">{t("Note (optional)")}</span>
+            <input value={form.note} onChange={(e) => set('note')(e.target.value)} maxLength={200} placeholder={t("e.g. traffic sa Pedro Guevarra, maagang uwi")} />
           </label>
 
           <div className={`take-home ${takeHome < 0 ? 'neg' : ''}`}>
-            <span>Take-home <small>(kita − krudo − boundary − iba pa)</small></span>
+            <span>{t("Take-home")}{' '}<small>(kita − krudo − boundary − iba pa)</small></span>
             <b>{php(takeHome)}</b>
-            {perHour != null && <small>{php(perHour)} per hour · {hours(n(form.minutes))} on trips</small>}
+            {perHour != null && <small>{php(perHour)}{' '}{t("per hour ·")}{' '}{hours(n(form.minutes))}{' '}{t("on trips")}</small>}
           </div>
-          <button className="btn primary wide" disabled={busy || isDemo}>{busy ? 'Saving…' : 'Save'}</button>
+          <button className="btn primary wide" disabled={busy || isDemo}>{busy ? t("Saving…") : t("Save")}</button>
           {msg && <p className={msg.kind === 'ok' ? 'ok' : 'warn'}>{msg.text}</p>}
         </form>
 
         {rows?.length > 0 && (
           <>
-            <div className="section-label"><span>Last 7 days</span><span>{week.days} day{week.days === 1 ? '' : 's'} logged</span></div>
+            <div className="section-label"><span>{t("Last 7 days")}</span><span>{week.days === 1 ? t('1 day logged') : t('{n} days logged', { n: week.days })}</span></div>
             <div className="card detail-stats week-stats">
-              <span><small>Take-home</small><b>{php(week.total)}</b></span>
-              <span><small>Per day</small><b>{php(week.avg)}</b></span>
-              <span><small>Diesel</small><b>{php(week.fuel)}</b></span>
+              <span><small>{t("Take-home")}</small><b>{php(week.total)}</b></span>
+              <span><small>{t("Per day")}</small><b>{php(week.avg)}</b></span>
+              <span><small>{t("Diesel")}</small><b>{php(week.fuel)}</b></span>
             </div>
 
-            <div className="section-label"><span>History</span><span>{rows.length}</span></div>
+            <div className="section-label"><span>{t("History")}</span><span>{rows.length}</span></div>
             <div className="menu-card">
               {rows.map((r) => (
                 <div key={r.day} className="menu-row saved-row">
@@ -167,7 +168,7 @@ export default function EarningsScreen() {
                     <span className={`menu-icon ${net(r) < 0 ? 'danger' : ''}`}><Icon name="fare" size={18} /></span>
                     <span className="menu-text">
                       <span className="menu-title">{dayLabel(r.day)} · {php(net(r))}</span>
-                      <span className="menu-sub">Kita {php(r.gross)} · krudo {php(r.fuel)} · boundary {php(r.boundary)}{r.trips ? ` · ${r.trips} trips` : ''}</span>
+                      <span className="menu-sub">{t("Kita")}{' '}{php(r.gross)}{' '}{t("· krudo")}{' '}{php(r.fuel)}{' '}{t("· boundary")}{' '}{php(r.boundary)}{r.trips ? ` · ${r.trips} trips` : ''}</span>
                     </span>
                   </button>
                   <button className="icon-btn" onClick={() => remove(r.day)} aria-label={`Delete ${dayLabel(r.day)}`}><Icon name="trash" size={18} /></button>

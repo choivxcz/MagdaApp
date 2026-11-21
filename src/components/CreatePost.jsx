@@ -8,6 +8,7 @@ import { haptic } from '../lib/haptics.js';
 import { postTip, TIP_CATEGORIES } from '../lib/community.js';
 import { createPost, VEHICLES, POST_KINDS } from '../lib/communityPosts.js';
 import { gpsErrorText } from '../lib/gps.js';
+import { t } from '../lib/i18n.js';
 
 const LOCAL_VEHICLES = ['tricycle', 'etrike', 'pedicab', 'habal', 'jeepney', 'van', 'bus'];
 const fare = (s) => {
@@ -25,7 +26,7 @@ function TipForm({ route, onDone, onCancel }) {
 
   async function submit(e) {
     e.preventDefault();
-    if (body.trim().length < 5) return setMsg('Please write a little more (at least 5 letters).');
+    if (body.trim().length < 5) return setMsg(t("Please write a little more (at least 5 letters)."));
     setBusy(true);
     setMsg('');
     try {
@@ -40,7 +41,7 @@ function TipForm({ route, onDone, onCancel }) {
   }
 
   function addLocation() {
-    if (!navigator.geolocation) return setMsg('GPS is not available on this device.');
+    if (!navigator.geolocation) return setMsg(t("GPS is not available on this device."));
     navigator.geolocation.getCurrentPosition(
       (p) => setPoint([p.coords.longitude, p.coords.latitude]),
       (err) => setMsg(gpsErrorText(err)),
@@ -50,7 +51,7 @@ function TipForm({ route, onDone, onCancel }) {
 
   return (
     <form className="card form" onSubmit={submit}>
-      <span className="label">What kind of tip?</span>
+      <span className="label">{t("What kind of tip?")}</span>
       <div className="choice-list">
         {Object.entries(TIP_CATEGORIES).map(([id, c]) => (
           <button type="button" key={id} className={`choice ${category === id ? 'on' : ''}`} onClick={() => setCategory(id)}>
@@ -59,27 +60,27 @@ function TipForm({ route, onDone, onCancel }) {
           </button>
         ))}
       </div>
-      <label className="field"><span className="label">Your tip</span>
+      <label className="field"><span className="label">{t("Your tip")}</span>
         <textarea value={body} onChange={(e) => setBody(e.target.value.slice(0, 280))} rows={4} maxLength={280}
-          placeholder="e.g. Jeepneys to Sta. Cruz stop in front of the 7-Eleven, not at the waiting shed." />
-        <span className="fineprint">{body.length}/280 · Don’t include names, phone numbers or plate numbers. Use Report a ride for complaints.</span>
+          placeholder={t("e.g. Jeepneys to Sta. Cruz stop in front of the 7-Eleven, not at the waiting shed.")} />
+        <span className="fineprint">{body.length}{t("/280 · Don’t include names, phone numbers or plate numbers. Use Report a ride for complaints.")}</span>
       </label>
-      <label className="field"><span className="label">Near a stop (optional)</span>
+      <label className="field"><span className="label">{t("Near a stop (optional)")}</span>
         <select value={stopId} onChange={(e) => setStopId(e.target.value)}>
-          <option value="">No particular stop</option>
+          <option value="">{t("No particular stop")}</option>
           {route.stops.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </label>
       <div className="row-between">
-        <span className="sub">{point ? 'Your current spot will be attached.' : 'Attach where you are now (optional)'}</span>
+        <span className="sub">{point ? t("Your current spot will be attached.") : t("Attach where you are now (optional)")}</span>
         {point
-          ? <button type="button" className="link-btn small" onClick={() => setPoint(null)}>Remove</button>
-          : <button type="button" className="btn small" onClick={addLocation}><Icon name="locate" size={15} /> Add my spot</button>}
+          ? <button type="button" className="link-btn small" onClick={() => setPoint(null)}>{t("Remove")}</button>
+          : <button type="button" className="btn small" onClick={addLocation}><Icon name="locate" size={15} />{' '}{t("Add my spot")}</button>}
       </div>
       {msg && <p className="warn small">{msg}</p>}
       <div className="row-between">
-        <button type="button" className="btn" onClick={onCancel}>Cancel</button>
-        <button className="btn primary" disabled={busy}>{busy ? 'Sharing…' : 'Share tip'}</button>
+        <button type="button" className="btn" onClick={onCancel}>{t("Cancel")}</button>
+        <button className="btn primary" disabled={busy}>{busy ? t("Sharing…") : t("Share tip")}</button>
       </div>
     </form>
   );
@@ -101,9 +102,9 @@ function PlaceForm({ route, kind, onDone, onCancel }) {
 
   async function submit(e) {
     e.preventDefault();
-    if (name.trim().length < 3) return setMsg(isRoute ? 'Name the route, e.g. “Poblacion – Brgy. Bucal”.' : 'Name the terminal, e.g. “Bucal TODA terminal”.');
-    if (!vehicles.length) return setMsg('Choose at least one kind of ride.');
-    if (isRoute ? geo.length < 2 : !geo) return setMsg(isRoute ? 'Draw the route on the map: tap along the road from start to end, or Record while riding.' : 'Pin the terminal on the map.');
+    if (name.trim().length < 3) return setMsg(isRoute ? t("Name the route, e.g. “Poblacion – Brgy. Bucal”.") : t("Name the terminal, e.g. “Bucal TODA terminal”."));
+    if (!vehicles.length) return setMsg(t("Choose at least one kind of ride."));
+    if (isRoute ? geo.length < 2 : !geo) return setMsg(isRoute ? t("Draw the route on the map: tap along the road from start to end, or Record while riding.") : t("Pin the terminal on the map."));
     setBusy(true);
     setMsg('');
     try {
@@ -123,12 +124,12 @@ function PlaceForm({ route, kind, onDone, onCancel }) {
 
   return (
     <form className="card form" onSubmit={submit}>
-      <label className="field"><span className="label">{isRoute ? 'Route name' : 'Terminal name'}</span>
+      <label className="field"><span className="label">{isRoute ? t("Route name") : t("Terminal name")}</span>
         <input value={name} onChange={(e) => setName(e.target.value.slice(0, 80))} maxLength={80}
-          placeholder={isRoute ? 'e.g. Poblacion – Brgy. Bucal (tricycle)' : 'e.g. Bucal TODA terminal, beside the chapel'} />
+          placeholder={isRoute ? t("e.g. Poblacion – Brgy. Bucal (tricycle)") : t("e.g. Bucal TODA terminal, beside the chapel")} />
       </label>
       <div className="field">
-        <span className="label">Rides here</span>
+        <span className="label">{t("Rides here")}</span>
         <div className="chip-wrap">
           {LOCAL_VEHICLES.map((v) => (
             <button type="button" key={v} className={`chip small ${vehicles.includes(v) ? 'on' : ''}`} onClick={() => toggle(v)} aria-pressed={vehicles.includes(v)}>
@@ -138,32 +139,32 @@ function PlaceForm({ route, kind, onDone, onCancel }) {
         </div>
       </div>
       <div className="field">
-        <span className="label">{isRoute ? 'Draw the route' : 'Where is it?'}</span>
+        <span className="label">{isRoute ? t("Draw the route") : t("Where is it?")}</span>
         <PickMap route={route} mode={isRoute ? 'path' : 'point'} value={geo} onChange={setGeo} />
       </div>
       <div className="field">
-        <span className="label">Fare (optional, in pesos)</span>
+        <span className="label">{t("Fare (optional, in pesos)")}</span>
         <div className="fare-inputs">
-          <label><small>Usual</small><input inputMode="decimal" value={fares.default} onChange={(e) => setFares({ ...fares, default: e.target.value })} placeholder="20" /></label>
-          <label><small>Solo / special</small><input inputMode="decimal" value={fares.solo} onChange={(e) => setFares({ ...fares, solo: e.target.value })} placeholder="40" /></label>
-          <label><small>Each, if shared</small><input inputMode="decimal" value={fares.shared} onChange={(e) => setFares({ ...fares, shared: e.target.value })} placeholder="10" /></label>
+          <label><small>{t("Usual")}</small><input inputMode="decimal" value={fares.default} onChange={(e) => setFares({ ...fares, default: e.target.value })} placeholder="20" /></label>
+          <label><small>{t("Solo / special")}</small><input inputMode="decimal" value={fares.solo} onChange={(e) => setFares({ ...fares, solo: e.target.value })} placeholder="40" /></label>
+          <label><small>{t("Each, if shared")}</small><input inputMode="decimal" value={fares.shared} onChange={(e) => setFares({ ...fares, shared: e.target.value })} placeholder="10" /></label>
         </div>
       </div>
-      <label className="field"><span className="label">Hours (optional)</span>
-        <input value={hours} onChange={(e) => setHours(e.target.value.slice(0, 80))} maxLength={80} placeholder="e.g. 5 AM – 8 PM, few after 6 PM" />
+      <label className="field"><span className="label">{t("Hours (optional)")}</span>
+        <input value={hours} onChange={(e) => setHours(e.target.value.slice(0, 80))} maxLength={80} placeholder={t("e.g. 5 AM – 8 PM, few after 6 PM")} />
       </label>
-      <label className="field"><span className="label">Notes (optional)</span>
+      <label className="field"><span className="label">{t("Notes (optional)")}</span>
         <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} maxLength={500}
-          placeholder={isRoute ? 'Where it starts and ends, landmarks it passes…' : 'How to find it, which places it goes to…'} />
-        <span className="fineprint">Don’t include names, phone numbers or plate numbers.</span>
+          placeholder={isRoute ? t("Where it starts and ends, landmarks it passes…") : t("How to find it, which places it goes to…")} />
+        <span className="fineprint">{t("Don’t include names, phone numbers or plate numbers.")}</span>
       </label>
-      <label className="switch-label"><span>Post as “Anonymous commuter”</span>
+      <label className="switch-label"><span>{t("Post as “Anonymous commuter”")}</span>
         <input type="checkbox" className="switch" checked={anonymous} onChange={(e) => setAnonymous(e.target.checked)} />
       </label>
       {msg && <p className="warn small">{msg}</p>}
       <div className="row-between">
-        <button type="button" className="btn" onClick={onCancel}>Cancel</button>
-        <button className="btn primary" disabled={busy}>{busy ? 'Sending…' : 'Send for review'}</button>
+        <button type="button" className="btn" onClick={onCancel}>{t("Cancel")}</button>
+        <button className="btn primary" disabled={busy}>{busy ? t("Sending…") : t("Send for review")}</button>
       </div>
     </form>
   );
@@ -174,7 +175,7 @@ export default function CreatePost({ route, onDone, onCancel, initialKind = null
   if (!kind) {
     return (
       <div className="card">
-        <div className="row-between"><b>What can you share?</b><button type="button" className="icon-btn small" onClick={onCancel} aria-label="Close"><Icon name="close" size={16} /></button></div>
+        <div className="row-between"><b>{t("What can you share?")}</b><button type="button" className="icon-btn small" onClick={onCancel} aria-label={t("Close")}><Icon name="close" size={16} /></button></div>
         <div className="create-kinds">
           {Object.entries(POST_KINDS).map(([k, p]) => (
             <button type="button" key={k} className="create-kind" onClick={() => setKind(k)}>

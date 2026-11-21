@@ -1,6 +1,7 @@
 // Commuter account data: profile, saved trips and places, ride reports.
 import { supabase } from './supabase.js';
 import { removeAllMyPhotos } from './photos.js';
+import { t } from './i18n.js';
 
 function must({ data, error }) {
   if (error) throw error;
@@ -64,10 +65,10 @@ export function tripPlaces(row, route) {
 // ---- Saved places (Home, School, Work...) ----
 
 export const PLACE_KINDS = {
-  home: { label: 'Home', icon: 'home' },
-  school: { label: 'School', icon: 'school' },
-  work: { label: 'Work', icon: 'work' },
-  other: { label: 'Place', icon: 'star' },
+  home: { get label() { return t('Home'); }, icon: 'home' },
+  school: { get label() { return t('School'); }, icon: 'school' },
+  work: { get label() { return t('Work'); }, icon: 'work' },
+  other: { get label() { return t('Place'); }, icon: 'star' },
 };
 
 export async function listSavedPlaces() {

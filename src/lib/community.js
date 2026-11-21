@@ -6,14 +6,15 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { supabase } from './supabase.js';
 import { distanceMeters } from './geo.js';
 import { isDataSaver } from './prefs.js';
+import { t } from './i18n.js';
 
 export const TIP_CATEGORIES = {
-  route_change: { label: 'Route change', icon: 'routes', hint: 'The jeepney now uses a different street' },
-  boarding: { label: 'Where to wait', icon: 'waiting', hint: 'Where people actually get on or off' },
-  fare: { label: 'Fare', icon: 'fare', hint: 'What drivers charge, discounts, change' },
-  terminal: { label: 'Terminal & tricycles', icon: 'terminal', hint: 'Terminals, tricycle stands, last trips' },
-  road: { label: 'Road & traffic', icon: 'warning', hint: 'Road work, floods, heavy traffic' },
-  other: { label: 'Other tip', icon: 'chat', hint: '' },
+  route_change: { get label() { return t('Route change'); }, icon: 'routes', get hint() { return t('The jeepney now uses a different street'); } },
+  boarding: { get label() { return t('Where to wait'); }, icon: 'waiting', get hint() { return t('Where people actually get on or off'); } },
+  fare: { get label() { return t('Fare'); }, icon: 'fare', get hint() { return t('What drivers charge, discounts, change'); } },
+  terminal: { get label() { return t('Terminal & tricycles'); }, icon: 'terminal', get hint() { return t('Terminals, tricycle stands, last trips'); } },
+  road: { get label() { return t('Road & traffic'); }, icon: 'warning', get hint() { return t('Road work, floods, heavy traffic'); } },
+  other: { get label() { return t('Other tip'); }, icon: 'chat', hint: '' },
 };
 
 function must({ data, error }) {

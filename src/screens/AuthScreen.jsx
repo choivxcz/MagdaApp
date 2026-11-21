@@ -4,6 +4,7 @@ import { setPrefs, usePrefs } from '../lib/prefs.js';
 import { friendlyAuthError, passwordProblem } from '../lib/account.js';
 import { AUTH_REDIRECT_URL } from '../lib/authLinks.js';
 import { Logo } from '../components/Icon.jsx';
+import { t } from '../lib/i18n.js';
 
 export default function AuthScreen() {
   const prefs = usePrefs();
@@ -64,34 +65,34 @@ export default function AuthScreen() {
     <div className="auth">
       <div className="auth-brand">
         <Logo size={76} />
-        <h1>Sakay Laguna</h1>
-        <p>Magdalena ⇄ Santa Cruz jeepneys, live.</p>
+        <h1>{t("Sakay Laguna")}</h1>
+        <p>{t("Magdalena ⇄ Santa Cruz jeepneys, live.")}</p>
       </div>
 
       {mode !== 'forgot' && (
         <div className="segmented auth-tabs" role="tablist">
-          <button role="tab" className={mode === 'signin' ? 'on' : ''} onClick={() => switchMode('signin')}>Sign in</button>
-          <button role="tab" className={mode === 'signup' ? 'on' : ''} onClick={() => switchMode('signup')}>Create account</button>
+          <button role="tab" className={mode === 'signin' ? 'on' : ''} onClick={() => switchMode('signin')}>{t("Sign in")}</button>
+          <button role="tab" className={mode === 'signup' ? 'on' : ''} onClick={() => switchMode('signup')}>{t("Create account")}</button>
         </div>
       )}
 
       <form className="auth-form" onSubmit={submit}>
         {mode === 'forgot' && (
           <>
-            <h2>Reset password</h2>
-            <p className="hint">Enter your email and we’ll send you a reset link.</p>
+            <h2>{t("Reset password")}</h2>
+            <p className="hint">{t("Enter your email and we’ll send you a reset link.")}</p>
           </>
         )}
         {mode === 'signup' && (
-          <label>Full name
+          <label>{t("Full name")}
             <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={60} autoComplete="name" />
           </label>
         )}
-        <label>Email
+        <label>{t("Email")}
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
         </label>
         {mode !== 'forgot' && (
-          <label>Password
+          <label>{t("Password")}
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={mode === 'signup' ? 8 : 6} maxLength={72}
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} />
           </label>
@@ -101,20 +102,20 @@ export default function AuthScreen() {
         {notice && <p className="ok">{notice}</p>}
 
         <button className="btn primary wide" disabled={busy}>
-          {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Send reset link'}
+          {busy ? t("Please wait…") : mode === 'signin' ? t("Sign in") : mode === 'signup' ? t("Create account") : t("Send reset link")}
         </button>
 
-        {mode === 'signin' && <button type="button" className="link-btn" onClick={() => switchMode('forgot')}>Forgot password?</button>}
-        {mode === 'forgot' && <button type="button" className="link-btn" onClick={() => switchMode('signin')}>Back to sign in</button>}
+        {mode === 'signin' && <button type="button" className="link-btn" onClick={() => switchMode('forgot')}>{t("Forgot password?")}</button>}
+        {mode === 'forgot' && <button type="button" className="link-btn" onClick={() => switchMode('signin')}>{t("Back to sign in")}</button>}
         {mode === 'signup' && (
-          <p className="fineprint center">By creating an account you agree to use the app responsibly. See More → Privacy for what we store.</p>
+          <p className="fineprint center">{t("By creating an account you agree to use the app responsibly. See More → Privacy for what we store.")}</p>
         )}
       </form>
 
       <div className="auth-guest">
-        <button className="btn wide" onClick={() => setPrefs({ guest: true })}>Continue as guest</button>
-        <p className="hint center">Guests can see jeepneys, seats and fares. Sign in to save trips and report rides.</p>
-        <p className="hint center">Jeepney drivers: sign in with the account your operator gave you.</p>
+        <button className="btn wide" onClick={() => setPrefs({ guest: true })}>{t("Continue as guest")}</button>
+        <p className="hint center">{t("Guests can see jeepneys, seats and fares. Sign in to save trips and report rides.")}</p>
+        <p className="hint center">{t("Jeepney drivers: sign in with the account your operator gave you.")}</p>
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ import { addRecent, clearRecents, useRecents } from '../lib/recents.js';
 import { normalize } from '../lib/assistant/knowledge.js';
 import { useDataSaver } from '../lib/prefs.js';
 import { useOnline } from '../lib/useOnline.js';
+import { t, tParts } from '../lib/i18n.js';
 
 const FIELD_TEXT = {
   from: { placeholder: 'Where are you?', aria: 'From' },
@@ -29,7 +30,7 @@ function Row({ icon, title, sub, onPick, tone }) {
         <span className={`place-icon ${tone ?? ''}`}><Icon name={icon} size={18} /></span>
         <span className="place-text">
           <span className="place-title">{title}</span>
-          {sub && <span className="place-sub">{sub}</span>}
+          {sub && <span className="place-sub">{tParts(sub)}</span>}
         </span>
       </button>
     </li>
@@ -126,8 +127,8 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
                     ref={inputs[field]}
                     className="trip-input"
                     value={value(field, place)}
-                    placeholder={FIELD_TEXT[field].placeholder}
-                    aria-label={FIELD_TEXT[field].aria}
+                    placeholder={t(FIELD_TEXT[field].placeholder)}
+                    aria-label={t(FIELD_TEXT[field].aria)}
                     onFocus={() => active !== field && open(field)}
                     onChange={(e) => { setQuery(e.target.value); if (e.target.value) setBrowse(null); }}
                     enterKeyHint="search"
@@ -140,7 +141,7 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
                     }}
                   />
                   {active === field && query && (
-                    <button type="button" className="icon-btn small" onMouseDown={(e) => e.preventDefault()} onClick={() => { setQuery(''); inputs[field].current?.focus(); }} aria-label="Clear">
+                    <button type="button" className="icon-btn small" onMouseDown={(e) => e.preventDefault()} onClick={() => { setQuery(''); inputs[field].current?.focus(); }} aria-label={t("Clear")}>
                       <Icon name="close" size={16} />
                     </button>
                   )}
@@ -150,25 +151,25 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
           })}
         </div>
         {active ? (
-          <button type="button" className="link-btn small search-cancel" onMouseDown={(e) => e.preventDefault()} onClick={close}>Cancel</button>
+          <button type="button" className="link-btn small search-cancel" onMouseDown={(e) => e.preventDefault()} onClick={close}>{t("Cancel")}</button>
         ) : (
-          <button type="button" className="swap-btn" onClick={onSwap} disabled={!from || !to} aria-label="Swap from and to">
+          <button type="button" className="swap-btn" onClick={onSwap} disabled={!from || !to} aria-label={t("Swap from and to")}>
             <Icon name="swap" size={20} />
           </button>
         )}
       </div>
 
       {active && (
-        <div className="place-panel" role="listbox" aria-label={active === 'from' ? 'Choose where you are' : 'Choose where you’re going'}>
+        <div className="place-panel" role="listbox" aria-label={active === 'from' ? t("Choose where you are") : t("Choose where you’re going")}>
           {!isOnline && (
-            <p className="place-offline"><Icon name="offline" size={15} /> Offline · Streets, barangays and places on your phone still work</p>
+            <p className="place-offline"><Icon name="offline" size={15} />{' '}{t("Offline · Streets, barangays and places on your phone still work")}</p>
           )}
 
           {browsing ? (
             <>
               <div className="place-head">
                 <button type="button" className="link-btn small" onMouseDown={(e) => e.preventDefault()} onClick={() => setBrowse(null)}>
-                  <Icon name="back" size={14} /> All kinds
+                  <Icon name="back" size={14} />{' '}{t("All kinds")}
                 </button>
                 <span>{BROWSE[browse].label}</span>
               </div>
@@ -176,20 +177,20 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
                 <ul className="place-list">
                   {browsing.map((p) => <Row key={p.id} icon={p.icon} tone={toneOf(p)} title={p.label} sub={p.sub} onPick={() => choose(p)} />)}
                 </ul>
-              ) : <p className="place-empty">None on the map yet. <button type="button" className="link-btn small" onMouseDown={(e) => e.preventDefault()} onClick={pinIt}>Pin a place on the map</button></p>}
+              ) : <p className="place-empty">{t("None on the map yet.")}{' '}<button type="button" className="link-btn small" onMouseDown={(e) => e.preventDefault()} onClick={pinIt}>{t("Pin a place on the map")}</button></p>}
             </>
           ) : (
             <>
               <ul className="place-list">
                 {active === 'from' && (
-                  <Row icon="locate" tone="brand" title="Use my location" sub="GPS" onPick={() => { close(); onLocate(); }} />
+                  <Row icon="locate" tone="brand" title={t("Use my location")} sub={t("GPS")} onPick={() => { close(); onLocate(); }} />
                 )}
-                <Row icon="target" tone="brand" title="Choose on the map" sub="For corners, houses and places without a name" onPick={pinIt} />
+                <Row icon="target" tone="brand" title={t("Choose on the map")} sub={t("For corners, houses and places without a name")} onPick={pinIt} />
               </ul>
 
               {saved.length > 0 && (
                 <>
-                  <div className="place-head">Saved places</div>
+                  <div className="place-head">{t("Saved places")}</div>
                   <ul className="place-list">
                     {saved.map((p) => <Row key={p.id} icon={p.icon} tone="saved" title={p.label} sub={p.sub} onPick={() => choose(p)} />)}
                   </ul>
@@ -199,8 +200,8 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
               {recent.length > 0 && (
                 <>
                   <div className="place-head">
-                    <span>Recent</span>
-                    <button type="button" className="link-btn small" onMouseDown={(e) => e.preventDefault()} onClick={clearRecents}>Clear</button>
+                    <span>{t("Recent")}</span>
+                    <button type="button" className="link-btn small" onMouseDown={(e) => e.preventDefault()} onClick={clearRecents}>{t("Clear")}</button>
                   </div>
                   <ul className="place-list">
                     {recent.map((p, i) => <Row key={`${p.label}${i}`} icon={p.icon ?? 'history'} title={p.label} sub={p.sub} onPick={() => choose(p)} />)}
@@ -210,7 +211,7 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
 
               {!q && (
                 <>
-                  <div className="place-head">Browse by kind</div>
+                  <div className="place-head">{t("Browse by kind")}</div>
                   <div className="browse-grid">
                     {Object.entries(BROWSE).map(([k, b]) => (
                       <button type="button" key={k} className="browse-btn" onMouseDown={(e) => e.preventDefault()} onClick={() => setBrowse(k)}>
@@ -223,7 +224,7 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
 
               {stops.length > 0 && (
                 <>
-                  <div className="place-head">Jeepney stops</div>
+                  <div className="place-head">{t("Jeepney stops")}</div>
                   <ul className="place-list">
                     {stops.map((p) => <Row key={p.stopId} icon={p.icon} tone="stop" title={p.label} sub={p.sub} onPick={() => choose(p)} />)}
                   </ul>
@@ -232,7 +233,7 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
 
               {q && (
                 <>
-                  <div className="place-head">Places, streets & barangays {!places && <span className="spinner" aria-label="Loading places" />}</div>
+                  <div className="place-head">{t("Places, streets & barangays")}{' '}{!places && <span className="spinner" aria-label={t("Loading places")} />}</div>
                   {local.length > 0 && (
                     <ul className="place-list">
                       {local.map((p) => <Row key={p.id} icon={p.icon} tone={toneOf(p)} title={p.label} sub={p.sub} onPick={() => choose(p)} />)}
@@ -240,7 +241,7 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
                   )}
                   {needOnline && (online.loading || extra.length > 0) && (
                     <>
-                      <div className="place-head">More places (online) {online.loading && <span className="spinner" aria-label="Searching" />}</div>
+                      <div className="place-head">More places (online) {online.loading && <span className="spinner" aria-label={t("Searching")} />}</div>
                       <ul className="place-list">
                         {extra.map((p) => <Row key={p.id || p.label} icon="pin" title={p.label} sub={p.sub} onPick={() => choose(p)} />)}
                       </ul>
@@ -248,15 +249,15 @@ export default function TripSearch({ route, from, to, savedPlaces = [], near, on
                   )}
                   {places && !local.length && !extra.length && !online.loading && (
                     <p className="place-empty">
-                      {needOnline && online.error ? 'Couldn’t search online right now. ' : `No place called “${query.trim()}” on the map yet. `}
-                      <button type="button" className="link-btn small" onMouseDown={(e) => e.preventDefault()} onClick={pinIt}>Pin it on the map</button>
+                      {needOnline && online.error ? t("Couldn’t search online right now. ") : `No place called “${query.trim()}” on the map yet. `}
+                      <button type="button" className="link-btn small" onMouseDown={(e) => e.preventDefault()} onClick={pinIt}>{t("Pin it on the map")}</button>
                     </p>
                   )}
                 </>
               )}
             </>
           )}
-          <p className="place-fine">Streets & places © OpenStreetMap contributors.</p>
+          <p className="place-fine">{t("Streets & places © OpenStreetMap contributors.")}</p>
         </div>
       )}
     </div>

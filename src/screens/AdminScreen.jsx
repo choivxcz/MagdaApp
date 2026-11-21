@@ -8,11 +8,13 @@ import { fetchTips, adminSetTipStatus, deleteTip } from '../lib/community.js';
 import { adminListSos, adminResolveSos, mapsLink } from '../lib/driverData.js';
 import { TipCard } from './CommunityScreen.jsx';
 import {
-  adminReviewQueue, adminSetPostStatus, adminContentReports, adminResolveContent, adminBanUser, adminListBanned,
+  adminReviewQueue, adminSetPostStatus, adminListPosts, adminUpdatePost, adminContentReports, adminResolveContent, adminBanUser, adminListBanned,
   VEHICLES, POST_KINDS, REPORT_REASONS, fareText,
 } from '../lib/communityPosts.js';
 import AdminMfa, { useAdminAssurance } from '../components/AdminMfa.jsx';
 import routeData from '../data/route-magdalena-santa-cruz.json';
+import { useAppSettings, adminSetSetting, refreshSettings } from '../lib/settings.js';
+import { DIRECTIONS, DIRECTION_KEYS } from '../lib/directions.js';
 
 const DRIVER_FILTERS = [
   ['pending', 'Pending'],
@@ -22,7 +24,7 @@ const DRIVER_FILTERS = [
 const STATUS_LABEL = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', disabled: 'Turned off' };
 const REPORT_LABEL = {
   overpricing: 'Overcharging', harassment: 'Sexual harassment or abuse', reckless: 'Reckless driving', rude: 'Rude driver', other: 'Other',
-  missing_route: 'Route issue: missing route', wrong_route: 'Route issue: wrong path', route_problem: 'Route issue: other',
+  feedback: 'Feedback', missing_route: 'Route issue: missing route', wrong_route: 'Route issue: wrong path', route_problem: 'Route issue: other',
 };
 
 const when = (d) => (d ? new Date(d).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
@@ -58,8 +60,8 @@ export default function AdminScreen() {
       <PageHeader title="Admin tools" back="more" />
       <div className="page-body">
         <p className="fineprint mfa-ok"><Icon name="shield" size={14} /> 2-step verification on</p>
-        <Segmented value={tab} onChange={setTab} options={[['drivers', 'Drivers'], ['reports', 'Rides'], ['community', 'Community'], ['tips', 'Tips'], ['sos', 'SOS']]} />
-        {tab === 'drivers' ? <Drivers onChange={reloadMe} /> : tab === 'reports' ? <Reports /> : tab === 'community' ? <CommunityAdmin /> : tab === 'tips' ? <Tips /> : <SosAlerts />}
+        <Segmented value={tab} onChange={setTab} options={[['drivers', 'Drivers'], ['reports', 'Rides'], ['community', 'Community'], ['tips', 'Tips'], ['sos', 'SOS'], ['settings', 'Settings']]} />
+        {tab === 'drivers' ? <Drivers onChange={reloadMe} /> : tab === 'reports' ? <Reports /> : tab === 'community' ? <CommunityAdmin /> : tab === 'tips' ? <Tips /> : tab === 'settings' ? <SettingsAdmin /> : <SosAlerts />}
       </div>
     </div>
   );
@@ -237,13 +239,15 @@ function CommunityAdmin() {
   const [queue, setQueue] = useState(null);
   const [reports, setReports] = useState(null);
   const [banned, setBanned] = useState(null);
+  const [approved, setApproved] = useState(null);
+  const [editing, setEditing] = useState(null);
   const [error, setError] = useState('');
   const [notes, setNotes] = useState({});
 
   const load = useCallback(async () => {
     try {
-      const [q, r, b] = await Promise.all([adminReviewQueue(), adminContentReports(), adminListBanned()]);
-      setQueue(q); setReports(r); setBanned(b); setError('');
+      const [q, r, b, a] = await Promise.all([adminReviewQueue(), adminContentReports(), adminListBanned(), adminListPosts('approved')]);
+      setQueue(q); setReports(r); setBanned(b); setApproved(a); setError('');
     } catch (e) {
       setError(e.message);
     }
@@ -258,6 +262,7 @@ function CommunityAdmin() {
       <div className="filter-chips">
         <button className={view === 'review' ? 'on' : ''} onClick={() => setView('review')}>To review <span>{queue?.length ?? 0}</span></button>
         <button className={view === 'reports' ? 'on' : ''} onClick={() => setView('reports')}>Reported <span>{reports?.length ?? 0}</span></button>
+        <button className={view === 'approved' ? 'on' : ''} onClick={() => setView('approved')}>Approved <span>{approved?.length ?? 0}</span></button>
         <button className={view === 'banned' ? 'on' : ''} onClick={() => setView('banned')}>Banned <span>{banned?.length ?? 0}</span></button>
         <button className="icon-btn small refresh" onClick={load} aria-label="Refresh"><Icon name="refresh" size={16} /></button>
       </div>
@@ -305,6 +310,27 @@ function CommunityAdmin() {
         </div>
       )))}
 
+      {view === 'approved' && (approved === null ? <Skeleton rows={3} /> : approved.length === 0 ? <p className="hint center">No approved routes or terminals yet.</p> : approved.map((p) => (
+        editing === p.id ? (
+          <EditPost key={p.id} post={p} onCancel={() => setEditing(null)} onSave={(v) => act(async () => { await adminUpdatePost(p.id, v); setEditing(null); })} />
+        ) : (
+          <div key={p.id} className="card admin-card">
+            <div className="admin-card-head">
+              <span className="tile"><Icon name={POST_KINDS[p.kind]?.icon ?? 'pin'} size={20} /></span>
+              <div className="admin-card-title">
+                <b>{p.name}</b>
+                <span className="sub">{p.vehicles.map((v) => VEHICLES[v]?.label ?? v).join(', ')}{fareText(p.fares) ? ` · ${fareText(p.fares)}` : ''}{p.hours ? ` · ${p.hours}` : ''}</span>
+              </div>
+            </div>
+            {p.body && <p className="body-text">{p.body}</p>}
+            <div className="admin-actions">
+              <button className="btn" onClick={() => setEditing(p.id)}><Icon name="pencil" size={15} /> Edit</button>
+              <button className="btn" onClick={() => act(() => adminSetPostStatus(p.id, 'hidden'))}>Hide</button>
+            </div>
+          </div>
+        )
+      )))}
+
       {view === 'banned' && (banned === null ? <Skeleton rows={2} /> : banned.length === 0 ? <p className="hint center">No one is banned.</p> : (
         <div className="menu-card">
           {banned.map((b) => (
@@ -315,6 +341,88 @@ function CommunityAdmin() {
           ))}
         </div>
       ))}
+    </>
+  );
+}
+
+// Fix the name, rides, fares or hours of an approved route or terminal.
+function EditPost({ post, onSave, onCancel }) {
+  const [v, setV] = useState({
+    name: post.name, note: post.body ?? '', vehicles: post.vehicles, hours: post.hours ?? '',
+    fares: { default: post.fares.default ?? '', solo: post.fares.solo ?? '', shared: post.fares.shared ?? '' },
+  });
+  const num = (x) => (x === '' || x == null ? null : Number.isFinite(+x) ? Math.round(+x * 100) / 100 : null);
+  const toggle = (k) => setV({ ...v, vehicles: v.vehicles.includes(k) ? v.vehicles.filter((x) => x !== k) : [...v.vehicles, k].slice(0, 4) });
+  return (
+    <form className="card form" onSubmit={(e) => { e.preventDefault(); if (v.name.trim().length >= 3 && v.vehicles.length) onSave({ ...v, fares: { default: num(v.fares.default), solo: num(v.fares.solo), shared: num(v.fares.shared) } }); }}>
+      <label className="field"><span className="label">Name</span><input value={v.name} maxLength={80} onChange={(e) => setV({ ...v, name: e.target.value })} /></label>
+      <div className="chip-wrap">
+        {Object.entries(VEHICLES).map(([k, x]) => <button type="button" key={k} className={`chip small ${v.vehicles.includes(k) ? 'on' : ''}`} onClick={() => toggle(k)}>{x.label}</button>)}
+      </div>
+      <div className="fare-inputs">
+        {[['default', 'Usual'], ['solo', 'Solo'], ['shared', 'Each, shared']].map(([k, label]) => (
+          <label key={k}><small>{label} ₱</small><input inputMode="decimal" value={v.fares[k]} onChange={(e) => setV({ ...v, fares: { ...v.fares, [k]: e.target.value } })} /></label>
+        ))}
+      </div>
+      <label className="field"><span className="label">Hours</span><input value={v.hours} maxLength={80} onChange={(e) => setV({ ...v, hours: e.target.value })} /></label>
+      <label className="field"><span className="label">Notes</span><textarea rows={3} value={v.note} maxLength={500} onChange={(e) => setV({ ...v, note: e.target.value })} /></label>
+      <div className="admin-actions"><button className="btn primary">Save</button><button type="button" className="btn" onClick={onCancel}>Cancel</button></div>
+    </form>
+  );
+}
+
+// First / last trip times and contact details shown in the app.
+function SettingsAdmin() {
+  const settings = useAppSettings();
+  useEffect(() => { refreshSettings(); }, []);
+  return <SettingsForm key={JSON.stringify(settings)} settings={settings} />;
+}
+
+function SettingsForm({ settings }) {
+  const [hours, setHours] = useState(() => {
+    const h = settings.service_hours ?? {};
+    return Object.fromEntries([...DIRECTION_KEYS.map((d) => [d, { first: h[d]?.first ?? '', last: h[d]?.last ?? '' }]), ['note', h.note ?? '']]);
+  });
+  const [contact, setContact] = useState({ email: '', phone: '', facebook: '', donate: '', ...(settings.contact ?? {}) });
+  const [msg, setMsg] = useState(null);
+
+  async function save(key, value) {
+    setMsg(null);
+    try {
+      await adminSetSetting(key, value);
+      setMsg({ kind: 'ok', text: 'Saved. Phones get it within 12 hours (right away after reopening the app).' });
+    } catch (e) {
+      setMsg({ kind: 'warn', text: e.message });
+    }
+  }
+  const cleanHours = () => Object.fromEntries(Object.entries(hours).flatMap(([k, val]) => (k === 'note' ? (val.trim() ? [[k, val.trim()]] : []) : val.first && val.last ? [[k, val]] : [])));
+  const cleanContact = () => Object.fromEntries(Object.entries(contact).map(([k, x]) => [k, String(x).trim()]).filter(([, x]) => x));
+
+  return (
+    <>
+      {msg && <p className={msg.kind}>{msg.text}</p>}
+      <form className="card form" onSubmit={(e) => { e.preventDefault(); save('service_hours', cleanHours()); }}>
+        <b>Usual first and last trips</b>
+        <p className="fineprint">Shown to riders, with a warning near or after the last trip. Leave empty if you don’t know.</p>
+        {DIRECTION_KEYS.map((d) => (
+          <div key={d} className="fare-inputs two">
+            <span className="label">{DIRECTIONS[d].label}</span>
+            <label><small>First trip</small><input type="time" value={hours[d].first} onChange={(e) => setHours({ ...hours, [d]: { ...hours[d], first: e.target.value } })} /></label>
+            <label><small>Last trip</small><input type="time" value={hours[d].last} onChange={(e) => setHours({ ...hours, [d]: { ...hours[d], last: e.target.value } })} /></label>
+          </div>
+        ))}
+        <label className="field"><span className="label">Note (optional)</span><input value={hours.note} maxLength={200} onChange={(e) => setHours({ ...hours, note: e.target.value })} placeholder="e.g. Fewer trips on Sundays and holidays" /></label>
+        <button className="btn primary">Save trip times</button>
+      </form>
+      <form className="card form" onSubmit={(e) => { e.preventDefault(); save('contact', cleanContact()); }}>
+        <b>Contact & support</b>
+        <p className="fineprint">Shown in More → Contact & feedback. Use a team email or page, not a personal one, if you can.</p>
+        <label className="field"><span className="label">Email</span><input type="email" value={contact.email} maxLength={200} onChange={(e) => setContact({ ...contact, email: e.target.value })} /></label>
+        <label className="field"><span className="label">Phone (call or text)</span><input value={contact.phone} maxLength={200} onChange={(e) => setContact({ ...contact, phone: e.target.value })} /></label>
+        <label className="field"><span className="label">Facebook page link</span><input value={contact.facebook} maxLength={200} placeholder="https://facebook.com/…" onChange={(e) => setContact({ ...contact, facebook: e.target.value })} /></label>
+        <label className="field"><span className="label">Donations (e.g. GCash number and name)</span><input value={contact.donate} maxLength={200} onChange={(e) => setContact({ ...contact, donate: e.target.value })} /></label>
+        <button className="btn primary">Save contact details</button>
+      </form>
     </>
   );
 }

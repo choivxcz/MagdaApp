@@ -10,6 +10,7 @@ import {
   VEHICLES, POST_KINDS, REPORT_REASONS, targetOf, fareText,
   listComments, addComment, deleteComment, reportContent, blockAuthor, contributorCard,
 } from '../lib/communityPosts.js';
+import { t } from '../lib/i18n.js';
 
 const signIn = () => setPrefs({ guest: false });
 
@@ -18,7 +19,7 @@ export function Byline({ name, driver, when, children }) {
     <div className="post-by">
       <Avatar name={name === 'Anonymous commuter' ? '' : name} size={32} className={name === 'Anonymous commuter' ? 'ghost' : ''} />
       <div>
-        <b>{name}{driver && <span className="driver-badge" title="Verified jeepney driver"><Icon name="badge" size={12} /> Driver</span>}</b>
+        <b>{name}{driver && <span className="driver-badge" title={t("Verified jeepney driver")}><Icon name="badge" size={12} />{' '}{t("Driver")}</span>}</b>
         <span className="sub">{tipAge(when)}</span>
       </div>
       {children}
@@ -102,13 +103,13 @@ function Comments({ post, user, isAdmin, onCount }) {
 
   return (
     <div className="comments">
-      {list == null && !msg && <p className="sub">Loading comments…</p>}
-      {list?.length === 0 && <p className="sub">No comments yet.</p>}
+      {list == null && !msg && <p className="sub">{t("Loading comments…")}</p>}
+      {list?.length === 0 && <p className="sub">{t("No comments yet.")}</p>}
       {list?.map((c) => (
         <div key={c.id} className="comment">
           <Avatar name={c.author} size={26} />
           <div className="comment-body">
-            <span className="comment-head"><b>{c.author}</b>{c.authorDriver && <span className="driver-badge"><Icon name="badge" size={11} /> Driver</span>}<span className="sub">{tipAge(c.createdAt)}</span></span>
+            <span className="comment-head"><b>{c.author}</b>{c.authorDriver && <span className="driver-badge"><Icon name="badge" size={11} />{' '}{t("Driver")}</span>}<span className="sub">{tipAge(c.createdAt)}</span></span>
             <span>{c.body}</span>
           </div>
           <Menu items={[
@@ -119,11 +120,11 @@ function Comments({ post, user, isAdmin, onCount }) {
       ))}
       {user ? (
         <form className="comment-form" onSubmit={send}>
-          <input value={body} onChange={(e) => setBody(e.target.value.slice(0, 500))} placeholder="Write a comment…" maxLength={500} aria-label="Write a comment" />
-          <button className="send-btn" disabled={busy || !body.trim()} aria-label="Post comment"><Icon name="send" size={18} /></button>
+          <input value={body} onChange={(e) => setBody(e.target.value.slice(0, 500))} placeholder={t("Write a comment…")} maxLength={500} aria-label={t("Write a comment")} />
+          <button className="send-btn" disabled={busy || !body.trim()} aria-label={t("Post comment")}><Icon name="send" size={18} /></button>
         </form>
       ) : (
-        <p className="sub"><button type="button" className="link-btn small" onClick={signIn}>Sign in</button> to comment.</p>
+        <p className="sub"><button type="button" className="link-btn small" onClick={signIn}>{t("Sign in")}</button>{' '}{t("to comment.")}</p>
       )}
       {msg && <p className="warn small">{msg}</p>}
       {reporting && <ReportSheet kind="comment" id={reporting.id} what="comment" onClose={() => setReporting(null)} onDone={() => { setList(list.filter((x) => x.id !== reporting.id)); }} />}
@@ -143,8 +144,8 @@ export function PostCard({ post, route, user, isAdmin, onVote, onConfirm, onHelp
   return (
     <article className={`post-card ${post.status === 'review' ? 'in-review' : ''} ${post.status === 'rejected' ? 'rejected' : ''}`}>
       <Byline name={post.author} driver={post.authorDriver} when={post.createdAt}>
-        {post.status === 'review' && <span className="pill">In review</span>}
-        {post.status === 'rejected' && <span className="pill warn-pill">Not approved</span>}
+        {post.status === 'review' && <span className="pill">{t("In review")}</span>}
+        {post.status === 'rejected' && <span className="pill warn-pill">{t("Not approved")}</span>}
         <Menu items={[
           (post.point || post.path) && { label: 'Show on map', icon: 'map', onClick: () => onShowOnMap(post) },
           post.author !== 'Anonymous commuter' && { label: `About ${post.author}`, icon: 'user', onClick: () => onProfile(post) },
@@ -159,40 +160,40 @@ export function PostCard({ post, route, user, isAdmin, onVote, onConfirm, onHelp
         <div>
           <b>{isTip ? tipCat.label : post.name}{stop ? ` · ${stop.short ?? stop.name}` : ''}</b>
           <span className="sub">
-            {isTip ? 'Tip' : `${kind.label} · ${post.vehicles.map((v) => VEHICLES[v]?.label ?? v).join(', ')}`}
+            {isTip ? t("Tip") : `${kind.label} · ${post.vehicles.map((v) => VEHICLES[v]?.label ?? v).join(', ')}`}
           </span>
         </div>
       </div>
       {post.body && <p className="tip-body">{post.body}</p>}
       {(fares || post.hours) && (
         <dl className="post-facts">
-          {fares && <><dt>Fare</dt><dd>{fares}</dd></>}
-          {post.hours && <><dt>Hours</dt><dd>{post.hours}</dd></>}
+          {fares && <><dt>{t("Fare")}</dt><dd>{fares}</dd></>}
+          {post.hours && <><dt>{t("Hours")}</dt><dd>{post.hours}</dd></>}
         </dl>
       )}
-      {post.status === 'rejected' && post.reviewNote && <p className="warn small">Admin: {post.reviewNote}</p>}
-      {post.status === 'review' && <p className="sub">Only you can see this until an admin checks it (usually within a day).</p>}
+      {post.status === 'rejected' && post.reviewNote && <p className="warn small">{t("Admin:")}{' '}{post.reviewNote}</p>}
+      {post.status === 'review' && <p className="sub">{t("Only you can see this until an admin checks it (usually within a day).")}</p>}
       {(post.point || post.path) && (
-        <button type="button" className="link-btn small post-map-link" onClick={() => onShowOnMap(post)}><Icon name="map" size={14} /> Show on map</button>
+        <button type="button" className="link-btn small post-map-link" onClick={() => onShowOnMap(post)}><Icon name="map" size={14} />{' '}{t("Show on map")}</button>
       )}
 
       {approved && (
         <div className="post-actions">
           {isTip ? (
             <button className={`helpful-btn ${post.myVote ? 'on' : ''}`} onClick={() => (user ? onHelpful(post) : signIn())} disabled={post.mine} aria-pressed={!!post.myVote}>
-              <Icon name="thumb" size={15} /> Helpful{post.up ? ` · ${post.up}` : ''}
+              <Icon name="thumb" size={15} />{' '}{t("Helpful")}{post.up ? ` · ${post.up}` : ''}
             </button>
           ) : (
             <>
-              <button className={`vote-btn ${post.myVote === 1 ? 'on' : ''}`} onClick={() => (user ? onVote(post, post.myVote === 1 ? 0 : 1) : signIn())} disabled={post.mine} aria-pressed={post.myVote === 1} aria-label="Upvote">
+              <button className={`vote-btn ${post.myVote === 1 ? 'on' : ''}`} onClick={() => (user ? onVote(post, post.myVote === 1 ? 0 : 1) : signIn())} disabled={post.mine} aria-pressed={post.myVote === 1} aria-label={t("Upvote")}>
                 <Icon name="thumb" size={15} /> {post.up}
               </button>
-              <button className={`vote-btn down ${post.myVote === -1 ? 'on' : ''}`} onClick={() => (user ? onVote(post, post.myVote === -1 ? 0 : -1) : signIn())} disabled={post.mine} aria-pressed={post.myVote === -1} aria-label="Downvote">
+              <button className={`vote-btn down ${post.myVote === -1 ? 'on' : ''}`} onClick={() => (user ? onVote(post, post.myVote === -1 ? 0 : -1) : signIn())} disabled={post.mine} aria-pressed={post.myVote === -1} aria-label={t("Downvote")}>
                 <Icon name="thumb" size={15} className="flip" /> {post.down}
               </button>
             </>
           )}
-          <button className={`vote-btn ${showComments ? 'on' : ''}`} onClick={() => setShowComments(!showComments)} aria-expanded={showComments} aria-label="Comments">
+          <button className={`vote-btn ${showComments ? 'on' : ''}`} onClick={() => setShowComments(!showComments)} aria-expanded={showComments} aria-label={t("Comments")}>
             <Icon name="comment" size={15} /> {post.comments}
           </button>
           {kind.confirm && (
@@ -233,17 +234,17 @@ export function ReportSheet({ kind, id, what = 'post', onClose, onDone, canBlock
     <div className="modal-backdrop" onClick={onClose}>
       <form className="modal" role="dialog" aria-modal="true" aria-label={`Report this ${what}`} onClick={(e) => e.stopPropagation()} onSubmit={send}>
         <div className="modal-head">
-          <b>Report this {what}</b>
-          <button type="button" className="icon-btn small" onClick={onClose} aria-label="Close"><Icon name="close" size={16} /></button>
+          <b>{t("Report this")}{' '}{what}</b>
+          <button type="button" className="icon-btn small" onClick={onClose} aria-label={t("Close")}><Icon name="close" size={16} /></button>
         </div>
         {state === 'sent' ? (
           <>
-            <p className="ok">Thanks. The admin will look at it. When 3 people report the same thing, it is hidden right away.</p>
-            <button type="button" className="btn primary wide" onClick={onClose}>Done</button>
+            <p className="ok">{t("Thanks. The admin will look at it. When 3 people report the same thing, it is hidden right away.")}</p>
+            <button type="button" className="btn primary wide" onClick={onClose}>{t("Done")}</button>
           </>
         ) : (
           <>
-            <p className="sub">Why are you reporting this? The person won’t know it was you.</p>
+            <p className="sub">{t("Why are you reporting this? The person won’t know it was you.")}</p>
             <div className="choice-list">
               {Object.entries(REPORT_REASONS).map(([k, label]) => (
                 <button type="button" key={k} className={`choice ${reason === k ? 'on' : ''}`} onClick={() => setReason(k)}>
@@ -251,16 +252,16 @@ export function ReportSheet({ kind, id, what = 'post', onClose, onDone, canBlock
                 </button>
               ))}
             </div>
-            <label className="field"><span className="label">Tell us more (optional)</span>
-              <textarea rows={2} value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="What’s wrong with it?" />
+            <label className="field"><span className="label">{t("Tell us more (optional)")}</span>
+              <textarea rows={2} value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder={t("What’s wrong with it?")} />
             </label>
             {canBlock && (
-              <label className="switch-label"><span>Also block this person</span>
+              <label className="switch-label"><span>{t("Also block this person")}</span>
                 <input type="checkbox" className="switch" checked={block} onChange={(e) => setBlock(e.target.checked)} />
               </label>
             )}
             {state && state !== 'sending' && <p className="warn small">{state}</p>}
-            <button className="btn primary wide" disabled={state === 'sending'}>{state === 'sending' ? 'Sending…' : 'Send report'}</button>
+            <button className="btn primary wide" disabled={state === 'sending'}>{state === 'sending' ? t("Sending…") : t("Send report")}</button>
           </>
         )}
       </form>
@@ -277,31 +278,31 @@ export function ContributorSheet({ kind, id, onClose, onBlock, canBlock }) {
   }, [kind, id]);
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <section className="modal" role="dialog" aria-modal="true" aria-label="Contributor" onClick={(e) => e.stopPropagation()}>
+      <section className="modal" role="dialog" aria-modal="true" aria-label={t("Contributor")} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <b>Contributor</b>
-          <button type="button" className="icon-btn small" onClick={onClose} aria-label="Close"><Icon name="close" size={16} /></button>
+          <b>{t("Contributor")}</b>
+          <button type="button" className="icon-btn small" onClick={onClose} aria-label={t("Close")}><Icon name="close" size={16} /></button>
         </div>
         {error && <p className="warn">{error}</p>}
-        {!card && !error && <p className="sub">Loading…</p>}
+        {!card && !error && <p className="sub">{t("Loading…")}</p>}
         {card && (
           <>
             <div className="contributor">
               <Avatar name={card.anonymous ? '' : card.name} size={56} />
               <div>
-                <b>{card.name}{card.isDriver && <span className="driver-badge"><Icon name="badge" size={12} /> Verified driver</span>}</b>
+                <b>{card.name}{card.isDriver && <span className="driver-badge"><Icon name="badge" size={12} />{' '}{t("Verified driver")}</span>}</b>
                 <span className="sub">{card.joined ? `Community contributor since ${card.joined.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}` : 'Community contributor'}</span>
               </div>
             </div>
             {!card.anonymous && (
               <div className="detail-stats">
-                <span><small>Routes</small><b>{card.routes}</b></span>
-                <span><small>Terminals</small><b>{card.terminals}</b></span>
-                <span><small>Tips</small><b>{card.tips}</b></span>
-                <span><small>Comments</small><b>{card.comments}</b></span>
+                <span><small>{t("Routes")}</small><b>{card.routes}</b></span>
+                <span><small>{t("Terminals")}</small><b>{card.terminals}</b></span>
+                <span><small>{t("Tips")}</small><b>{card.tips}</b></span>
+                <span><small>{t("Comments")}</small><b>{card.comments}</b></span>
               </div>
             )}
-            {canBlock && !card.anonymous && <button type="button" className="btn wide" onClick={onBlock}><Icon name="block" size={16} /> Block {card.name}</button>}
+            {canBlock && !card.anonymous && <button type="button" className="btn wide" onClick={onBlock}><Icon name="block" size={16} />{' '}{t("Block")}{' '}{card.name}</button>}
           </>
         )}
       </section>

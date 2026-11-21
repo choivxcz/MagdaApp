@@ -6,6 +6,7 @@ import { isDemo } from '../lib/supabase.js';
 import { DIRECTIONS, seatStatus } from '../lib/directions.js';
 import { riderStatusText, statusOf } from '../lib/tripStatus.js';
 import { useDataSaver } from '../lib/prefs.js';
+import { t } from '../lib/i18n.js';
 
 function agoText(date) {
   const s = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
@@ -55,41 +56,41 @@ export default function DriverSheet({ jeepId, jeep, onClose }) {
           ) : card?.jeepney || card?.avatar ? (
             <button className="jeep-photo-empty photo-load" onClick={() => setPhotosOn(true)}>
               <Icon name="camera" size={30} />
-              <span>Show photos <small>(uses a little data)</small></span>
+              <span>{t("Show photos")}{' '}<small>(uses a little data)</small></span>
             </button>
           ) : (
             <div className="jeep-photo-empty">
               <Icon name="bus" size={34} />
-              <span>{card === undefined ? 'Loading…' : 'No jeepney photo yet'}</span>
+              <span>{card === undefined ? t("Loading…") : t("No jeepney photo yet")}</span>
             </div>
           )}
-          <button className="driver-close" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
+          <button className="driver-close" onClick={onClose} aria-label={t("Close")}><Icon name="close" size={18} /></button>
         </div>
 
         <div className="driver-body">
           <div className="driver-head">
             <Avatar url={photosOn ? card?.avatar : null} name={card?.name} size={72} className="driver-avatar" />
             <div className="driver-name">
-              <b>{card?.name ?? (card === undefined ? 'Loading…' : 'Jeepney driver')}</b>
-              <span className="sub">Driver · {plate}</span>
+              <b>{card?.name ?? (card === undefined ? t("Loading…") : t("Jeepney driver"))}</b>
+              <span className="sub">{t("Driver ·")}{' '}{plate}</span>
             </div>
           </div>
 
-          {error && <p className="warn">Couldn’t load the driver’s profile: {error}</p>}
+          {error && <p className="warn">{t("Couldn’t load the driver’s profile:")}{' '}{error}</p>}
 
           {jeep && riderStatusText(jeep) && (
             <p className={`driver-status ${jeep.tripStatus ?? ''}`}><Icon name={statusOf(jeep).icon} size={16} /> {riderStatusText(jeep)}</p>
           )}
           {jeep ? (
             <div className="kv-grid">
-              <span><small>Plate</small><b>{plate}</b></span>
-              <span><small>Direction</small><b>{dir?.label ?? '—'}</b></span>
-              <span><small>Seats</small><b>{seats?.level === 'unknown' ? '—' : seats.text}</b></span>
+              <span><small>{t("Plate")}</small><b>{plate}</b></span>
+              <span><small>{t("Direction")}</small><b>{dir?.label ?? '—'}</b></span>
+              <span><small>{t("Seats")}</small><b>{seats?.level === 'unknown' ? '—' : seats.text}</b></span>
             </div>
           ) : (
-            <p className="hint">This jeepney stopped sharing its location.</p>
+            <p className="hint">{t("This jeepney stopped sharing its location.")}</p>
           )}
-          {jeep && <p className="fineprint">Location updated {agoText(jeep.updatedAt)}.</p>}
+          {jeep && <p className="fineprint">{t("Location updated")}{' '}{agoText(jeep.updatedAt)}.</p>}
         </div>
       </section>
     </div>

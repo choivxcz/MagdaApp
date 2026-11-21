@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { usePrefs, useDataSaver } from './lib/prefs.js';
+import { setLanguage, useLanguage, t } from './lib/i18n.js';
 import { useJeepneys } from './lib/useJeepneys.js';
 import { prepareRoute } from './lib/geo.js';
 import { isDemo } from './lib/supabase.js';
@@ -52,6 +53,9 @@ function Shell() {
   const [mapRequest, setMapRequest] = useState(null);
   const [driverOnTrip, setDriverOnTrip] = useState(false);
   useTheme(prefs.theme);
+  // Language: load the chosen one's words, and redraw everything when they arrive.
+  useEffect(() => { setLanguage(prefs.lang); }, [prefs.lang]);
+  useLanguage();
 
   const gate = !prefs.onboarded ? 'onboarding'
     : loading ? 'loading'
@@ -60,12 +64,12 @@ function Shell() {
     : null;
 
   const tabs = [
-    { id: 'map', label: 'Map', icon: 'map' },
-    { id: 'routes', label: 'Routes', icon: 'routes' },
-    { id: 'community', label: 'Community', icon: 'chat' },
-    { id: 'saved', label: 'Saved', icon: 'heart' },
-    ...(driver ? [{ id: 'drive', label: driverOnTrip ? 'On trip' : 'Drive', icon: 'drive' }] : []),
-    { id: 'more', label: 'More', icon: 'more' },
+    { id: 'map', label: t('Map'), icon: 'map' },
+    { id: 'routes', label: t('Routes'), icon: 'routes' },
+    { id: 'community', label: t('Community'), icon: 'chat' },
+    { id: 'saved', label: t('Saved'), icon: 'heart' },
+    ...(driver ? [{ id: 'drive', label: driverOnTrip ? t('On trip') : t('Drive'), icon: 'drive' }] : []),
+    { id: 'more', label: t('More'), icon: 'more' },
   ];
   const current = tabs.some((t) => t.id === tab) ? tab : 'map';
 

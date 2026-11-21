@@ -16,6 +16,7 @@
 // boards/alights exactly at that stop on the legs that pass it.
 import { distanceMeters, pointAlong, projectOnRoute } from './geo.js';
 import { computeFare, tricycleFare } from './fare.js';
+import { t } from './i18n.js';
 
 export const PLAN = {
   walkMps: 1.3, // ~4.7 km/h
@@ -415,12 +416,12 @@ export function alignWithPaths(option, pathFor, P = PLAN) {
 }
 
 export const TAG_LABEL = {
-  fastest: 'Fastest',
-  least_walk: 'Least walking',
-  direct: 'Direct',
-  transfer: 'With transfer',
-  walk_only: 'Walk',
-  tricycle_only: 'Tricycle',
+  get fastest() { return t('Fastest'); },
+  get least_walk() { return t('Least walking'); },
+  get direct() { return t('Direct'); },
+  get transfer() { return t('With transfer'); },
+  get walk_only() { return t('Walk'); },
+  get tricycle_only() { return t('Tricycle'); },
 };
 
 export const fmtMeters = (m) => (m < 1000 ? `${Math.max(10, Math.round(m / 10) * 10)} m` : `${(m / 1000).toFixed(1)} km`);

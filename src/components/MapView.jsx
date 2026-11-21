@@ -13,6 +13,8 @@ maplibregl.setWorkerUrl(workerUrl);
 
 // Free OpenStreetMap-based tiles, no API key needed.
 export const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+// Night map: same map tiles (already on the phone), only a ~20 KB style.
+export const MAP_STYLE_NIGHT = 'https://tiles.openfreemap.org/styles/dark';
 export const COMMUNITY_COLOR = '#0f766e';
 
 // Jeepneys glide to their new spot instead of jumping, so the map feels
@@ -172,7 +174,9 @@ async function addLandmarkLayers(map, list, show) {
     id: 'landmark-selected', type: 'circle', source: 'landmark-selected',
     paint: { 'circle-radius': 20, 'circle-color': '#c84b0c', 'circle-opacity': 0.18, 'circle-stroke-color': '#c84b0c', 'circle-stroke-width': 2.5 },
   }, before);
-  const text = { 'text-color': '#1f2124', 'text-halo-color': '#ffffff', 'text-halo-width': 1.6 };
+  const text = map.isNight
+    ? { 'text-color': '#e7e2dc', 'text-halo-color': '#111111', 'text-halo-width': 1.6 }
+    : { 'text-color': '#1f2124', 'text-halo-color': '#ffffff', 'text-halo-width': 1.6 };
   const levels = [
     // rank, minzoom, icon size, label from zoom, font, label size
     [3, 16.2, 0.72, 17, 'Noto Sans Regular', 11],
@@ -197,7 +201,7 @@ async function addLandmarkLayers(map, list, show) {
         'text-optional': true,
         'symbol-sort-key': rank,
       },
-      paint: rank === 0 ? { ...text, 'text-color': '#7a2e05' } : text,
+      paint: rank === 0 ? { ...text, 'text-color': map.isNight ? '#fdba74' : '#7a2e05' } : text,
     }, before);
   }
   setBasePois(map, !show);
@@ -239,7 +243,7 @@ function addCommunityLayers(map, list) {
     paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 4, 16, 7], 'circle-color': COMMUNITY_COLOR, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } }, before);
   map.addLayer({ id: 'community-labels', type: 'symbol', source: 'community', minzoom: 15,
     layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-offset': [0, 1], 'text-anchor': 'top', 'text-optional': true, 'symbol-placement': 'point', 'text-max-width': 9 },
-    paint: { 'text-color': '#0b4f4a', 'text-halo-color': '#fff', 'text-halo-width': 1.5 } }, before);
+    paint: map.isNight ? { 'text-color': '#5eead4', 'text-halo-color': '#111', 'text-halo-width': 1.5 } : { 'text-color': '#0b4f4a', 'text-halo-color': '#fff', 'text-halo-width': 1.5 } }, before);
 }
 function communityAt(map, point) {
   const layers = COMMUNITY_LAYERS.filter((id) => map.getLayer(id));
@@ -280,7 +284,7 @@ function keepOnRoute(map, route) {
 // (id) gets a highlight ring.
 export default function MapView({
   route, jeepneys = [], pickup, dest, me, guide, waiting, onPick, onJeepTap, activeDirection, visible = true, padding, onReady,
-  landmarks, showLandmarks = true, onLandmarkTap, selectedLandmark, community, onCommunityTap,
+  landmarks, showLandmarks = true, onLandmarkTap, selectedLandmark, community, onCommunityTap, night = false,
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -315,17 +319,18 @@ export default function MapView({
   useEffect(() => {
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: MAP_STYLE,
+      style: night ? MAP_STYLE_NIGHT : MAP_STYLE,
       bounds: route.bounds,
       renderWorldCopies: false,
       fitBoundsOptions: { padding: { top: 40, bottom: 40, left: 30, right: 30, ...(paddingRef.current ?? {}) } },
       attributionControl: { compact: true },
     });
 
+    map.isNight = night;
     map.on('load', () => {
       const layout = { 'line-cap': 'round', 'line-join': 'round' };
       map.addSource('outside', { type: 'geojson', data: outsideMask(route) });
-      map.addLayer({ id: 'outside', type: 'fill', source: 'outside', paint: { 'fill-color': '#f3efe9', 'fill-opacity': 0.72 } });
+      map.addLayer({ id: 'outside', type: 'fill', source: 'outside', paint: { 'fill-color': night ? '#000000' : '#f3efe9', 'fill-opacity': night ? 0.55 : 0.72 } });
       map.addLayer({ id: 'outside-edge', type: 'line', source: 'outside', paint: { 'line-color': '#c84b0c', 'line-opacity': 0.35, 'line-width': 1.5, 'line-dasharray': [3, 2] } });
       const legs = Object.entries(route.legs);
       for (const [direction, leg] of legs) {
@@ -339,7 +344,7 @@ export default function MapView({
       for (const [direction] of legs) {
         map.addLayer({
           id: `leg-${direction}-casing`, type: 'line', source: `leg-${direction}`, layout,
-          paint: { 'line-color': '#ffffff', 'line-width': 8, 'line-offset': 3 },
+          paint: { 'line-color': night ? '#1a1a1a' : '#ffffff', 'line-width': 8, 'line-offset': 3 },
         });
       }
       for (const [direction] of legs) {

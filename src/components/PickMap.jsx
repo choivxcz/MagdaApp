@@ -9,6 +9,7 @@ import { MAP_STYLE, COMMUNITY_COLOR } from './MapView.jsx';
 import { DIRECTIONS } from '../lib/directions.js';
 import { distanceMeters } from '../lib/geo.js';
 import { gpsErrorText } from '../lib/gps.js';
+import { t } from '../lib/i18n.js';
 
 const MAX_POINTS = 400;
 const RECORD_EVERY_M = 15; // GPS: keep a point every 15 m
@@ -89,7 +90,7 @@ export default function PickMap({ route, mode, value, onChange, center }) {
       navigator.geolocation.clearWatch(watch.current);
       watch.current = null;
       setRecording(false);
-      setGpsMsg(value?.length > 1 ? 'Recording stopped. Check the line, then save.' : 'No route recorded yet.');
+      setGpsMsg(value?.length > 1 ? t("Recording stopped. Check the line, then save.") : t("No route recorded yet."));
       return;
     }
     if (!navigator.geolocation) return setGpsMsg('GPS is not available on this phone.');
@@ -114,18 +115,18 @@ export default function PickMap({ route, mode, value, onChange, center }) {
       <div className="pick-map-bar">
         {mode === 'point' ? (
           <>
-            <span className="sub">{value ? 'Pinned. Tap the map to move it.' : 'Tap the map where it is.'}</span>
-            <button type="button" className="btn small" onClick={useGps}><Icon name="locate" size={15} /> I’m here</button>
+            <span className="sub">{value ? t("Pinned. Tap the map to move it.") : t("Tap the map where it is.")}</span>
+            <button type="button" className="btn small" onClick={useGps}><Icon name="locate" size={15} />{' '}{t("I’m here")}</button>
           </>
         ) : (
           <>
             <span className="sub">
-              {value?.length ? `${value.length} point${value.length === 1 ? '' : 's'} · ${length < 1000 ? `${Math.round(length)} m` : `${(length / 1000).toFixed(1)} km`}` : 'Tap along the road, start to end.'}
+              {value?.length ? `${value.length === 1 ? t('1 point') : t('{n} points', { n: value.length })} · ${length < 1000 ? `${Math.round(length)} m` : `${(length / 1000).toFixed(1)} km`}` : t('Tap along the road, start to end.')}
             </span>
-            <button type="button" className="icon-btn small" onClick={() => onChange((value ?? []).slice(0, -1))} disabled={!value?.length || recording} aria-label="Undo last point"><Icon name="undo" size={16} /></button>
-            <button type="button" className="icon-btn small" onClick={() => onChange([])} disabled={!value?.length || recording} aria-label="Clear the line"><Icon name="trash" size={16} /></button>
+            <button type="button" className="icon-btn small" onClick={() => onChange((value ?? []).slice(0, -1))} disabled={!value?.length || recording} aria-label={t("Undo last point")}><Icon name="undo" size={16} /></button>
+            <button type="button" className="icon-btn small" onClick={() => onChange([])} disabled={!value?.length || recording} aria-label={t("Clear the line")}><Icon name="trash" size={16} /></button>
             <button type="button" className={`btn small ${recording ? 'danger' : ''}`} onClick={toggleRecord}>
-              <Icon name={recording ? 'stop' : 'record'} size={15} /> {recording ? 'Stop' : 'Record'}
+              <Icon name={recording ? 'stop' : 'record'} size={15} /> {recording ? t("Stop recording") : t("Record")}
             </button>
           </>
         )}

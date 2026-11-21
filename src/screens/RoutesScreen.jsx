@@ -8,6 +8,8 @@ import { useAuth } from '../lib/auth.jsx';
 import { useTips, TIP_CATEGORIES, tipAge } from '../lib/community.js';
 import { stopPlace } from '../lib/places.js';
 import { useCommunityPlaces, VEHICLES, fareText } from '../lib/communityPosts.js';
+import { useAppSettings, serviceStatus } from '../lib/settings.js';
+import { t } from '../lib/i18n.js';
 
 export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
   const [query, setQuery] = useState('');
@@ -30,32 +32,32 @@ export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
   return (
     <div className="page">
       <PageHeader
-        title="Routes"
-        right={<span className={`live-pill ${active ? 'on' : ''}`}><i />{active} live</span>}
+        title={t("Routes")}
+        right={<span className={`live-pill ${active ? 'on' : ''}`}><i />{active}{' '}{t("live")}</span>}
       />
       <div className="page-body">
         <label className="search-box">
           <Icon name="search" size={20} />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search routes or stops, e.g. DLTB" />
-          {query && <button className="icon-btn small" onClick={() => setQuery('')} aria-label="Clear search"><Icon name="close" size={16} /></button>}
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("Search routes or stops, e.g. DLTB")} />
+          {query && <button className="icon-btn small" onClick={() => setQuery('')} aria-label={t("Clear search")}><Icon name="close" size={16} /></button>}
         </label>
 
         {routeMatches && (
           <>
-            <div className="section-label"><span>Jeepney routes</span><span>1 route</span></div>
+            <div className="section-label"><span>{t("Jeepney routes")}</span><span>{t("1 route")}</span></div>
             <button className="route-card" onClick={() => navigate('routes/detail')}>
               <div className="route-card-head">
                 <span className="tile"><Icon name="bus" size={20} /></span>
                 <span className="route-card-name">
                   <b>{route.name}</b>
-                  <span className="sub">Both directions · {(out.length / 1000).toFixed(1)} km</span>
+                  <span className="sub">{t("Both directions ·")}{' '}{(out.length / 1000).toFixed(1)}{' '}{t("km")}</span>
                 </span>
                 <Icon name="chevron" size={18} className="menu-chevron" />
               </div>
               <div className="route-card-stats">
-                <span><small>Full trip</small><b>{peso(full.regular)}</b></span>
-                <span><small>On the road</small><b className={active ? 'live-text' : ''}>{active}</b></span>
-                <span><small>With seats</small><b>{withSeats}</b></span>
+                <span><small>{t("Full trip")}</small><b>{peso(full.regular)}</b></span>
+                <span><small>{t("On the road")}</small><b className={active ? 'live-text' : ''}>{active}</b></span>
+                <span><small>{t("With seats")}</small><b>{withSeats}</b></span>
               </div>
             </button>
           </>
@@ -63,13 +65,13 @@ export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
 
         {local.length > 0 && (
           <>
-            <div className="section-label"><span>Tricycle routes & terminals</span><span>{local.length} from commuters</span></div>
+            <div className="section-label"><span>{t("Tricycle routes & terminals")}</span><span>{local.length}{' '}{t("from commuters")}</span></div>
             <div className="menu-card">
               {local.map((p) => (
                 <button key={p.id} className="menu-row" onClick={() => openOnMap({ focus: { id: p.id, kind: p.kind, name: p.name, point: p.point, path: p.path } })}>
                   <span className="menu-icon community"><Icon name={p.kind === 'terminal' ? 'terminal' : 'routes'} size={20} /></span>
                   <span className="menu-text">
-                    <span className="menu-title">{p.name} <span className="pill community-pill">Community</span></span>
+                    <span className="menu-title">{p.name} <span className="pill community-pill">{t("Community")}</span></span>
                     <span className="menu-sub">{[p.vehicles.map((v) => VEHICLES[v]?.label ?? v).join(', '), fareText(p.fares)].filter(Boolean).join(' · ')}</span>
                   </span>
                   <Icon name="chevron" size={18} className="menu-chevron" />
@@ -81,12 +83,12 @@ export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
 
         {!q && (
           <>
-            <div className="section-label"><span>From commuters</span><span>{tips.length ? `${tips.length} tip${tips.length === 1 ? '' : 's'}` : ''}</span></div>
+            <div className="section-label"><span>{t("From commuters")}</span><span>{tips.length ? (tips.length === 1 ? t('1 tip') : t('{n} tips', { n: tips.length })) : ''}</span></div>
             <button className="route-card" onClick={() => navigate('community')}>
               <div className="route-card-head">
                 <span className="tile"><Icon name="chat" size={20} /></span>
                 <span className="route-card-name">
-                  <b>Community</b>
+                  <b>{t("Community")}</b>
                   <span className="sub">
                     {tips[0]
                       ? `${TIP_CATEGORIES[tips[0].category].label}: “${tips[0].body.length > 70 ? `${tips[0].body.slice(0, 70)}…` : tips[0].body}” · ${tipAge(tips[0].createdAt)}`
@@ -101,14 +103,14 @@ export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
 
         {stops.length > 0 && (
           <>
-            <div className="section-label"><span>Stops</span><span>{stops.length}</span></div>
+            <div className="section-label"><span>{t("Stops")}</span><span>{stops.length}</span></div>
             <div className="menu-card">
               {stops.map((s) => (
                 <button key={s.id} className="menu-row" onClick={() => openOnMap({ to: stopPlace(s) })}>
                   <span className="menu-icon"><Icon name={s.icon} size={20} /></span>
                   <span className="menu-text">
                     <span className="menu-title">{s.name}</span>
-                    <span className="menu-sub">Plan a trip here</span>
+                    <span className="menu-sub">{t("Plan a trip here")}</span>
                   </span>
                   <Icon name="chevron" size={18} className="menu-chevron" />
                 </button>
@@ -117,7 +119,7 @@ export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
           </>
         )}
 
-        {!routeMatches && stops.length === 0 && local.length === 0 && <p className="hint center">Nothing matches “{query}”.</p>}
+        {!routeMatches && stops.length === 0 && local.length === 0 && <p className="hint center">{t("Nothing matches “")}{query}”.</p>}
       </div>
     </div>
   );
@@ -129,6 +131,8 @@ function RouteDetail({ route, jeepneys, openOnMap }) {
   const leg = route.legs[direction];
   const first = leg.stops[0];
   const onLeg = jeepneys.filter((j) => j.direction === direction);
+  const settings = useAppSettings();
+  const service = serviceStatus(settings.service_hours, direction);
 
   return (
     <div className="page">
@@ -142,20 +146,28 @@ function RouteDetail({ route, jeepneys, openOnMap }) {
 
         <div className="card">
           <div className="detail-stats">
-            <span><small>Distance</small><b>{(leg.length / 1000).toFixed(1)} km</b></span>
-            <span><small>Full fare</small><b>{peso(computeFare(leg.length)[prefs.fareType])}</b></span>
-            <span><small>On this side</small><b>{onLeg.length}</b></span>
+            <span><small>{t("Distance")}</small><b>{(leg.length / 1000).toFixed(1)}{' '}{t("km")}</b></span>
+            <span><small>{t("Full fare")}</small><b>{peso(computeFare(leg.length)[prefs.fareType])}</b></span>
+            <span><small>{t("On this side")}</small><b>{onLeg.length}</b></span>
           </div>
+          {service.state !== 'unknown' && (
+            <div className="detail-stats">
+              <span><small>{t("First trip")}</small><b>~{service.first}</b></span>
+              <span><small>{t("Last trip")}</small><b>~{service.last}</b></span>
+              <span><small>{t("Now")}</small><b className={service.state === 'running' ? 'live-text' : ''}>{{ running: 'Running', last_soon: `Last trip soon`, before_first: 'Not yet', after_last: 'Done for today' }[service.state]}</b></span>
+            </div>
+          )}
+          {settings.service_hours?.note && <p className="hint">{settings.service_hours.note}</p>}
           <div>
-            <div className="label">Via</div>
+            <div className="label">{t("Via")}</div>
             <p className="body-text">{leg.via}</p>
           </div>
           <button className="btn primary wide" onClick={() => openOnMap({ direction })}>
-            View on map
+            {t("View on map")}
           </button>
         </div>
 
-        <div className="section-label"><span>Stops & fares from {first.short ?? first.name}</span></div>
+        <div className="section-label"><span>{t("Stops & fares from")}{' '}{first.short ?? first.name}</span></div>
         <ol className="timeline card">
           {leg.stops.map((s, i) => {
             const f = i === 0 ? null : computeFare(s.along - first.along);
@@ -164,10 +176,10 @@ function RouteDetail({ route, jeepneys, openOnMap }) {
                 <span className="timeline-dot" />
                 <div className="timeline-body">
                   <b>{s.name}</b>
-                  <span className="sub">{i === 0 ? 'Start' : `${((s.along - first.along) / 1000).toFixed(1)} km · ${peso(f[prefs.fareType])}`}</span>
+                  <span className="sub">{i === 0 ? t("Start") : `${((s.along - first.along) / 1000).toFixed(1)} km · ${peso(f[prefs.fareType])}`}</span>
                 </div>
                 {i < leg.stops.length - 1 && (
-                  <button className="btn small" onClick={() => openOnMap({ direction, pickupStopId: s.id })}>Ride from here</button>
+                  <button className="btn small" onClick={() => openOnMap({ direction, pickupStopId: s.id })}>{t("Ride from here")}</button>
                 )}
               </li>
             );

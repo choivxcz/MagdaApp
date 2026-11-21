@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import Icon, { AiLogo } from './Icon.jsx';
 import { ScrollRow } from './ui.jsx';
+import { t } from '../lib/i18n.js';
 
 export const GREETING = {
   role: 'assistant',
-  text: 'Hi! I’m **Sakay AI**. Ask me how to get anywhere along the route, fares, the next jeepney or free seats — in English or Tagalog.',
+  text: t("Hi! I’m **Sakay AI**. Ask me how to get anywhere along the route, fares, the next jeepney or free seats — in English or Tagalog."),
 };
 
 const SUGGESTIONS = [
@@ -59,14 +60,14 @@ export default function AssistantSheet({ chat, onSend, onShowTrip, onClose }) {
 
   return (
     <div className="driver-backdrop" onClick={onClose}>
-      <section className="assistant-sheet" role="dialog" aria-modal="true" aria-label="Sakay AI assistant" onClick={(e) => e.stopPropagation()}>
+      <section className="assistant-sheet" role="dialog" aria-modal="true" aria-label={t("Sakay AI assistant")} onClick={(e) => e.stopPropagation()}>
         <header className="assistant-head">
           <AiLogo size={42} className="assistant-badge" />
           <div className="assistant-title">
-            <b>Sakay AI</b>
-            <span className="sub">Directions, fares, jeepneys · English or Tagalog</span>
+            <b>{t("Sakay AI")}</b>
+            <span className="sub">{t("Directions, fares, jeepneys · English or Tagalog")}</span>
           </div>
-          <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" size={20} /></button>
+          <button className="icon-btn" onClick={onClose} aria-label={t("Close")}><Icon name="close" size={20} /></button>
         </header>
 
         <div className="assistant-log" ref={logRef} aria-live="polite">
@@ -77,23 +78,23 @@ export default function AssistantSheet({ chat, onSend, onShowTrip, onClose }) {
                 <span><Rich text={m.text} /></span>
                 {m.trip && (
                   <button className="bubble-action" onClick={() => onShowTrip(m.trip)}>
-                    <Icon name="map" size={16} /> Show on map
+                    <Icon name="map" size={16} />{' '}{t("Show on map")}
                   </button>
                 )}
-                {m.source === 'offline' && <span className="bubble-tag" title="Answered on your phone without the AI">offline answer</span>}
+                {m.source === 'offline' && <span className="bubble-tag" title={t("Answered on your phone without the AI")}>{t("offline answer")}</span>}
               </div>
             </div>
           ))}
           {chat.busy && (
             <div className="bubble-row assistant">
               <AiLogo size={30} className="bubble-avatar thinking" />
-              <div className="bubble assistant typing" aria-label="Sakay AI is typing"><i /><i /><i /></div>
+              <div className="bubble assistant typing" aria-label={t("Sakay AI is typing")}><i /><i /><i /></div>
             </div>
           )}
         </div>
 
         {fresh && (
-          <ScrollRow className="assistant-suggest-wrap" trackClassName="assistant-suggest" role="list" aria-label="Example questions">
+          <ScrollRow className="assistant-suggest-wrap" trackClassName="assistant-suggest" role="list" aria-label={t("Example questions")}>
             {SUGGESTIONS.map((s) => (
               <button key={s} role="listitem" className="suggest-chip" onClick={() => send(s)}>{s}</button>
             ))}
@@ -103,9 +104,9 @@ export default function AssistantSheet({ chat, onSend, onShowTrip, onClose }) {
         <form className="assistant-input" onSubmit={(e) => { e.preventDefault(); send(draft); }}>
           <input
             ref={inputRef} value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={500}
-            placeholder="Itanong mo dito… / Ask here…" aria-label="Your question" enterKeyHint="send"
+            placeholder={t("Itanong mo dito… / Ask here…")} aria-label={t("Your question")} enterKeyHint="send"
           />
-          <button type="submit" className="send-btn" disabled={!draft.trim() || chat.busy} aria-label="Send">
+          <button type="submit" className="send-btn" disabled={!draft.trim() || chat.busy} aria-label={t("Send")}>
             <Icon name="send" size={20} />
           </button>
         </form>

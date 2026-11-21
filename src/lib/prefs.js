@@ -10,6 +10,10 @@ const DEFAULTS = {
   showLandmarks: true,
   dataSaver: 'auto', // 'auto' (follow the phone) | 'on' | 'off'
   haptics: true,
+  mapStyle: 'auto', // 'auto' (follow the theme) | 'day' | 'night'
+  showAssistant: true,
+  lang: typeof navigator !== 'undefined' && /^(fil|tl)/i.test(navigator.language ?? '') ? 'tl' : 'en',
+  guideVoice: 'on', // trip mode speaks: 'on' | 'off'
 };
 
 function load() {
@@ -55,3 +59,17 @@ export const phoneWantsSavings = () => {
 };
 export const isDataSaver = (p = state) => p.dataSaver === 'on' || (p.dataSaver === 'auto' && phoneWantsSavings());
 export const useDataSaver = () => isDataSaver(usePrefs());
+
+// Night map: 'auto' follows the app's theme (and the phone's dark mode).
+const darkQuery = () => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null);
+const subscribeDark = (cb) => {
+  const q = darkQuery();
+  q?.addEventListener?.('change', cb);
+  return () => q?.removeEventListener?.('change', cb);
+};
+export const isNightMap = (p, phoneDark) => p.mapStyle === 'night' || (p.mapStyle !== 'day' && (p.theme === 'dark' || (p.theme !== 'light' && phoneDark)));
+export function useNightMap() {
+  const p = usePrefs();
+  const phoneDark = useSyncExternalStore(subscribeDark, () => !!darkQuery()?.matches, () => false);
+  return isNightMap(p, phoneDark);
+}

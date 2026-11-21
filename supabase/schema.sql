@@ -1880,3 +1880,118 @@ alter table public.ride_reports add column if not exists context text check (cha
 alter table public.ride_reports drop constraint if exists ride_reports_category_check;
 alter table public.ride_reports add constraint ride_reports_category_check
   check (category in ('overpricing', 'harassment', 'reckless', 'rude', 'other', 'missing_route', 'wrong_route', 'route_problem'));
+
+
+-- =====================================================================
+-- 16. App settings the admin sets in the app: usual first and last trip
+--     times for each direction, and contact / support details shown in
+--     More. Everyone can read them; only admins can change them. Also:
+--     admins can fix approved Community routes and terminals, and riders
+--     can send feedback.
+-- =====================================================================
+
+create table if not exists public.app_settings (
+  key        text primary key check (key in ('service_hours', 'contact')),
+  value      jsonb not null check (pg_column_size(value) <= 4000),
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users (id) on delete set null
+);
+alter table public.app_settings enable row level security;
+revoke all on public.app_settings from anon, authenticated;
+
+create or replace function public.get_app_settings()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(jsonb_object_agg(s.key, s.value), '{}'::jsonb) from public.app_settings s;
+$$;
+revoke all on function public.get_app_settings() from public;
+grant execute on function public.get_app_settings() to anon, authenticated;
+
+create or replace function public.admin_set_setting(p_key text, p_value jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_dir text;
+  v_t text;
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  if jsonb_typeof(p_value) <> 'object' then raise exception 'Settings must be an object.'; end if;
+  if p_key = 'service_hours' then
+    -- { "to_santa_cruz": { "first": "05:00", "last": "20:00" }, ..., "note": "..." }
+    for v_dir in select k from jsonb_object_keys(p_value) k where k <> 'note' loop
+      if v_dir !~ '^[a-z_]{2,30}$' or jsonb_typeof(p_value -> v_dir) <> 'object' then raise exception 'Unknown direction.'; end if;
+      for v_t in select x from jsonb_array_elements_text(jsonb_build_array(p_value -> v_dir ->> 'first', p_value -> v_dir ->> 'last')) x loop
+        if v_t is not null and v_t !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then raise exception 'Times must look like 05:30 or 20:00.'; end if;
+      end loop;
+    end loop;
+    if char_length(coalesce(p_value ->> 'note', '')) > 200 then raise exception 'The note is too long.'; end if;
+  elsif p_key = 'contact' then
+    -- { "email", "phone", "facebook", "donate" }: short plain text only.
+    if exists (select 1 from jsonb_each(p_value) e where e.key not in ('email', 'phone', 'facebook', 'donate') or jsonb_typeof(e.value) <> 'string' or char_length(e.value #>> '{}') > 200) then
+      raise exception 'Contact details: email, phone, facebook and donate only (short text).';
+    end if;
+    if coalesce(p_value ->> 'email', '') <> '' and p_value ->> 'email' !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'That email doesn''t look right.'; end if;
+    if coalesce(p_value ->> 'facebook', '') <> '' and p_value ->> 'facebook' !~ '^https://(www\.|m\.)?(facebook\.com|fb\.com|m\.me)/' then raise exception 'The Facebook link must start with https://facebook.com/ or https://m.me/'; end if;
+  else
+    raise exception 'Unknown setting.';
+  end if;
+  insert into public.app_settings (key, value, updated_at, updated_by) values (p_key, p_value, now(), auth.uid())
+  on conflict (key) do update set value = excluded.value, updated_at = now(), updated_by = auth.uid();
+end;
+$$;
+revoke all on function public.admin_set_setting(text, jsonb) from public, anon;
+grant execute on function public.admin_set_setting(text, jsonb) to authenticated;
+
+-- Admin: Community routes and terminals of one status (to fix approved ones).
+create or replace function public.admin_list_posts(p_status text)
+returns table (id uuid, kind text, name text, note text, vehicles text[], fare_default numeric, fare_solo numeric, fare_shared numeric,
+               hours text, lat double precision, lng double precision, path jsonb, author text, author_driver boolean, created_at timestamptz, status text)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  return query select p.id, p.kind, p.name, p.note, p.vehicles, p.fare_default, p.fare_solo, p.fare_shared, p.hours, p.lat, p.lng, p.path,
+                      coalesce((select pr.full_name from public.profiles pr where pr.id = p.user_id), 'Deleted account'),
+                      public.is_driver_account(p.user_id), p.created_at, p.status
+    from public.community_posts p where p.status = p_status order by p.created_at desc limit 200;
+end;
+$$;
+revoke all on function public.admin_list_posts(text) from public, anon;
+grant execute on function public.admin_list_posts(text) to authenticated;
+
+create or replace function public.admin_update_post(
+  p_id uuid, p_name text, p_note text, p_vehicles text[],
+  p_fare_default numeric, p_fare_solo numeric, p_fare_shared numeric, p_hours text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  update public.community_posts
+     set name = trim(p_name), note = nullif(trim(p_note), ''), vehicles = p_vehicles,
+         fare_default = p_fare_default, fare_solo = p_fare_solo, fare_shared = p_fare_shared,
+         hours = nullif(trim(p_hours), ''), reviewed_at = now()
+   where id = p_id;
+  if not found then raise exception 'Post not found.'; end if;
+end;
+$$;
+revoke all on function public.admin_update_post(uuid, text, text, text[], numeric, numeric, numeric, text) from public, anon;
+grant execute on function public.admin_update_post(uuid, text, text, text[], numeric, numeric, numeric, text) to authenticated;
+
+-- Feedback from the app goes with the other reports to the admin.
+alter table public.ride_reports drop constraint if exists ride_reports_category_check;
+alter table public.ride_reports add constraint ride_reports_category_check
+  check (category in ('overpricing', 'harassment', 'reckless', 'rude', 'other', 'missing_route', 'wrong_route', 'route_problem', 'feedback'));

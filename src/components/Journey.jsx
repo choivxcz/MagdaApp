@@ -6,6 +6,7 @@ import { DIRECTIONS } from '../lib/directions.js';
 import { peso } from '../lib/fare.js';
 import { TAG_LABEL, fmtMeters, fmtMinutes, spotText } from '../lib/planner.js';
 import { landmarks } from '../lib/landmarkData.js';
+import { t } from '../lib/i18n.js';
 
 const MODE_ICON = { walk: 'walk', tricycle: 'tricycle', ride: 'bus', transfer: 'swap' };
 const near = (n, fallback = 'along the route') => (n ? `near ${n.stop.short ?? n.stop.name}` : fallback);
@@ -29,16 +30,16 @@ export function modeChain(option) {
 export function OptionCards({ options, selectedId, onSelect, fareType }) {
   if (options.length < 2) return null;
   return (
-    <ScrollRow className="option-row-wrap" trackClassName="option-row" role="tablist" aria-label="Trip options">
+    <ScrollRow className="option-row-wrap" trackClassName="option-row" role="tablist" aria-label={t("Trip options")}>
       {options.map((o, i) => {
         const on = o.id === selectedId;
         const tags = o.tags.filter((t) => t !== 'transfer');
         return (
           <button key={o.id} role="tab" aria-selected={on} className={`option-card ${on ? 'on' : ''}`} onClick={() => onSelect(o.id)}>
             <span className="option-tags">
-              {i === 0 && <span className="option-tag best">Best</span>}
+              {i === 0 && <span className="option-tag best">{t("Best")}</span>}
               {tags.slice(0, 2).map((t) => <span key={t} className="option-tag">{TAG_LABEL[t]}</span>)}
-              {!tags.length && i > 0 && <span className="option-tag">{o.rides >= 2 ? 'With transfer' : 'Option'}</span>}
+              {!tags.length && i > 0 && <span className="option-tag">{o.rides >= 2 ? t("With transfer") : t("Option")}</span>}
             </span>
             <span className="option-time">{fmtMinutes(o.minutes)}</span>
             <span className="option-chain" aria-hidden="true">
@@ -82,8 +83,8 @@ export function Timeline({ option, from, to, fareType, firstWalkState, onRetryWa
       const dest = s.role === 'first' ? `to the sakayan ${near(next?.boardNear, '')}`.trim() : `to ${to.label}`;
       rows.push(
         <StepRow key={i} icon="walk" tone="walk" title={`Walk ${fmtMeters(s.meters)} · ${fmtMinutes(s.minutes)}`} sub={dest}
-          extra={s.role === 'first' && firstWalkState === 'loading' ? <span className="sub">Finding the walking route…</span>
-            : s.role === 'first' && firstWalkState === 'failed' ? <span className="sub">Couldn’t load walking directions. Walk to the violet <b>Sakayan</b> pin. <button className="link-btn small" onClick={onRetryWalk}>Try again</button></span>
+          extra={s.role === 'first' && firstWalkState === 'loading' ? <span className="sub">{t("Finding the walking route…")}</span>
+            : s.role === 'first' && firstWalkState === 'failed' ? <span className="sub">{t("Couldn’t load walking directions. Walk to the violet")}{' '}<b>{t("Sakayan")}</b>{' '}{t("pin.")}{' '}<button className="link-btn small" onClick={onRetryWalk}>{t("Try again")}</button></span>
               : null}
         />,
       );
@@ -91,22 +92,22 @@ export function Timeline({ option, from, to, fareType, firstWalkState, onRetryWa
       const dest = s.role === 'first' ? `to the sakayan ${near(next?.boardNear, '')}`.trim() : `to ${to.label}`;
       rows.push(
         <StepRow key={i} icon="tricycle" tone="trike" title={`Tricycle ${fmtMeters(s.meters)} · ~${fmtMinutes(s.minutes)}`} sub={`${dest} · about ₱${s.fare[ft]} (estimate)`}
-          extra={<span className="sub faint">{s.role === 'only' ? 'Door to door.' : 'Too far to walk.'} Tricycle fares are set by each town; agree on the fare first.</span>}
+          extra={<span className="sub faint">{s.role === 'only' ? t("Door to door.") : t("Too far to walk.")} Tricycle fares are set by each town; agree on the fare first.</span>}
         />,
       );
     } else if (s.type === 'transfer') {
       rows.push(
-        <StepRow key={i} icon="swap" tone="transfer" title="Transfer" sub={`${s.meters > 0 ? `Walk ${fmtMeters(s.meters)}, then w` : 'W'}ait for a jeepney ${DIRECTIONS[next?.direction]?.label.toLowerCase() ?? ''} (pay again)`} />,
+        <StepRow key={i} icon="swap" tone="transfer" title={t("Transfer")} sub={`${s.meters > 0 ? `Walk ${fmtMeters(s.meters)}, then w` : 'W'}ait for a jeepney ${DIRECTIONS[next?.direction]?.label.toLowerCase() ?? ''} (pay again)`} />,
       );
     } else if (s.type === 'ride') {
       const d = DIRECTIONS[s.direction];
       rows.push(
-        <StepRow key={i} icon="bus" tone={`ride ${d?.className ?? ''}`} title={<>Jeepney <span className={`dir-badge ${d?.className}`}>{d?.short}</span></>}
+        <StepRow key={i} icon="bus" tone={`ride ${d?.className ?? ''}`} title={<>{t("Jeepney")}{' '}<span className={`dir-badge ${d?.className}`}>{d?.short}</span></>}
           sub={`${fmtMeters(s.meters)} · ~${fmtMinutes(s.minutes)} · ${peso(s.fare[ft])}`}
         >
           <span className="ride-ends">
-            <span><i className="end-dot board" />Get on {spot(s.boardNear, s.board)} <small>(sakayan)</small></span>
-            <span><i className="end-dot alight" />Get off {spot(s.alightNear, s.alight)} <small>(babaan)</small></span>
+            <span><i className="end-dot board" />{t("Get on")}{' '}{spot(s.boardNear, s.board)} <small>(sakayan)</small></span>
+            <span><i className="end-dot alight" />{t("Get off")}{' '}{spot(s.alightNear, s.alight)} <small>(babaan)</small></span>
           </span>
         </StepRow>,
       );

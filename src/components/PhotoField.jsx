@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 import { Avatar } from './ui.jsx';
 import { uploadPhoto, removePhoto } from '../lib/photos.js';
+import { t } from '../lib/i18n.js';
 
 // Add, change or remove one photo: the profile picture ("avatar") or the
 // jeepney photo ("jeepney"). onChanged() should reload the photo links.
@@ -38,9 +39,9 @@ export default function PhotoField({ kind, userId, url, name, title, sub, onChan
   const preview = kind === 'avatar' ? (
     <Avatar url={url} name={name} size={76} />
   ) : url ? (
-    <img className="jeep-photo-img" src={url} alt="Your jeepney" />
+    <img className="jeep-photo-img" src={url} alt={t("Your jeepney")} />
   ) : (
-    <div className="jeep-photo-empty"><Icon name="bus" size={30} /><span>No jeepney photo yet</span></div>
+    <div className="jeep-photo-empty"><Icon name="bus" size={30} /><span>{t("No jeepney photo yet")}</span></div>
   );
 
   return (
@@ -51,9 +52,9 @@ export default function PhotoField({ kind, userId, url, name, title, sub, onChan
         {sub && <span className="sub">{sub}</span>}
         <div className="row">
           <button type="button" className="btn small icon-text" onClick={() => input.current?.click()} disabled={!!busy}>
-            <Icon name="camera" size={16} /> {busy || (url ? 'Change photo' : 'Add photo')}
+            <Icon name="camera" size={16} /> {busy || (url ? t("Change photo") : t("Add photo"))}
           </button>
-          {url && !busy && <button type="button" className="btn small" onClick={onRemove}>Remove</button>}
+          {url && !busy && <button type="button" className="btn small" onClick={onRemove}>{t("Remove")}</button>}
         </div>
         {msg && <p className={msg.ok ? 'ok' : 'warn'}>{msg.text}</p>}
       </div>

@@ -9,29 +9,30 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { supabase } from './supabase.js';
 import { distanceMeters } from './geo.js';
 import { isDataSaver } from './prefs.js';
+import { t } from './i18n.js';
 
 export const VEHICLES = {
-  tricycle: { label: 'Tricycle', icon: 'tricycle' },
-  etrike: { label: 'E-trike', icon: 'tricycle' },
-  pedicab: { label: 'Pedicab / sidecar', icon: 'tricycle' },
-  jeepney: { label: 'Jeepney', icon: 'bus' },
-  van: { label: 'Van / UV Express', icon: 'bus' },
-  bus: { label: 'Bus', icon: 'bus' },
-  habal: { label: 'Habal-habal', icon: 'drive' },
+  tricycle: { get label() { return t('Tricycle'); }, icon: 'tricycle' },
+  etrike: { get label() { return t('E-trike'); }, icon: 'tricycle' },
+  pedicab: { get label() { return t('Pedicab / sidecar'); }, icon: 'tricycle' },
+  jeepney: { get label() { return t('Jeepney'); }, icon: 'bus' },
+  van: { get label() { return t('Van / UV Express'); }, icon: 'bus' },
+  bus: { get label() { return t('Bus'); }, icon: 'bus' },
+  habal: { get label() { return t('Habal-habal'); }, icon: 'drive' },
 };
 
 export const POST_KINDS = {
-  local_route: { label: 'Local route', icon: 'routes', confirm: 'I’ve ridden this', what: 'Add a route', hint: 'A tricycle, e-trike or other ride that isn’t on the map' },
-  terminal: { label: 'Terminal', icon: 'terminal', confirm: 'I’ve been here', what: 'Mark a terminal', hint: 'A terminal, paradahan, TODA or loading area' },
-  tip: { label: 'Tip', icon: 'chat', confirm: null, what: 'Share a tip', hint: 'Where people wait, fares, route changes, road work' },
+  local_route: { get label() { return t('Local route'); }, icon: 'routes', get confirm() { return t('I’ve ridden this'); }, get what() { return t('Add a route'); }, get hint() { return t('A tricycle, e-trike or other ride that isn’t on the map'); } },
+  terminal: { get label() { return t('Terminal'); }, icon: 'terminal', get confirm() { return t('I’ve been here'); }, get what() { return t('Mark a terminal'); }, get hint() { return t('A terminal, paradahan, TODA or loading area'); } },
+  tip: { get label() { return t('Tip'); }, icon: 'chat', confirm: null, get what() { return t('Share a tip'); }, get hint() { return t('Where people wait, fares, route changes, road work'); } },
 };
 
 export const REPORT_REASONS = {
-  false_info: 'Wrong or fake information',
-  spam: 'Spam or ads',
-  harassment: 'Harassment or hate',
-  inappropriate: 'Sexual or inappropriate',
-  other: 'Something else',
+  get false_info() { return t('Wrong or fake information'); },
+  get spam() { return t('Spam or ads'); },
+  get harassment() { return t('Harassment or hate'); },
+  get inappropriate() { return t('Sexual or inappropriate'); },
+  get other() { return t('Something else'); },
 };
 
 const TOO_OLD = /could not find the function|schema cache/i;
@@ -201,6 +202,11 @@ export function fareText(fares) {
 
 // Admin
 export const adminReviewQueue = async () => (must(await supabase.rpc('admin_review_queue')) ?? []).map((r) => ({ ...toPost({ ...r, body: r.note, status: 'review' }), authorFull: r.author }));
+export const adminListPosts = async (status) => (must(await supabase.rpc('admin_list_posts', { p_status: status })) ?? []).map((r) => ({ ...toPost({ ...r, body: r.note }), authorFull: r.author }));
+export const adminUpdatePost = async (id, p) => must(await supabase.rpc('admin_update_post', {
+  p_id: id, p_name: p.name, p_note: p.note || null, p_vehicles: p.vehicles,
+  p_fare_default: p.fares.default, p_fare_solo: p.fares.solo, p_fare_shared: p.fares.shared, p_hours: p.hours || null,
+}));
 export const adminSetPostStatus = async (id, status, note) => must(await supabase.rpc('admin_set_post_status', { p_id: id, p_status: status, p_note: note || null }));
 export const adminContentReports = async () => (must(await supabase.rpc('admin_content_reports')) ?? []).map((r) => ({
   kind: r.target_kind, id: r.target_id, snippet: r.snippet, author: r.author, authorId: r.author_id, authorBanned: r.author_banned,

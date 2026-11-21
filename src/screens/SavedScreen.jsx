@@ -8,6 +8,7 @@ import { planJourneys, networkFromRoutes, fmtMinutes } from '../lib/planner.js';
 import { fareText } from '../components/Journey.jsx';
 import { usePrefs, setPrefs } from '../lib/prefs.js';
 import { isDemo } from '../lib/supabase.js';
+import { t } from '../lib/i18n.js';
 
 const WHAT_YOU_CAN_SAVE = [
   ['home', 'Places', 'Home, school, work: one tap to plan a trip there'],
@@ -62,22 +63,22 @@ export default function SavedScreen({ route, openOnMap }) {
 
   return (
     <div className="page">
-      <PageHeader title="Saved" subtitle="Your places and trips, one tap away." />
+      <PageHeader title={t("Saved")} subtitle="Your places and trips, one tap away." />
       <div className="page-body">
         {!user ? (
           <>
             <div className="empty">
               <span className="empty-icon"><Icon name="heart" size={30} /></span>
-              <h3>Save your places and trips</h3>
-              <p>Sign in to keep Home, School, Work and your usual trips in one place, on any phone.</p>
+              <h3>{t("Save your places and trips")}</h3>
+              <p>{t("Sign in to keep Home, School, Work and your usual trips in one place, on any phone.")}</p>
               {!isDemo && (
                 <div className="stack">
-                  <button className="btn primary pill-btn" onClick={() => setPrefs({ guest: false })}>Sign in</button>
-                  <button className="btn pill-btn" onClick={() => setPrefs({ guest: false })}>Create an account</button>
+                  <button className="btn primary pill-btn" onClick={() => setPrefs({ guest: false })}>{t("Sign in")}</button>
+                  <button className="btn pill-btn" onClick={() => setPrefs({ guest: false })}>{t("Create an account")}</button>
                 </div>
               )}
             </div>
-            <div className="section-label"><span>What you can save</span></div>
+            <div className="section-label"><span>{t("What you can save")}</span></div>
             <div className="menu-card">
               {WHAT_YOU_CAN_SAVE.map(([icon, title, sub]) => (
                 <div key={title} className="menu-row static">
@@ -91,7 +92,7 @@ export default function SavedScreen({ route, openOnMap }) {
           <>
             {(error || saved.error) && <p className="warn">{error || saved.error}</p>}
 
-            <div className="section-label"><span>Places</span>{saved.places.length > 0 && <span>{saved.places.length}</span>}</div>
+            <div className="section-label"><span>{t("Places")}</span>{saved.places.length > 0 && <span>{saved.places.length}</span>}</div>
             <div className="menu-card">
               {saved.places.map((p) => (
                 <div key={p.id} className="menu-row saved-row">
@@ -99,7 +100,7 @@ export default function SavedScreen({ route, openOnMap }) {
                     <span className="menu-icon"><Icon name={p.icon} size={20} /></span>
                     <span className="menu-text">
                       <span className="menu-title">{p.label}</span>
-                      <span className="menu-sub">{p.sub} · Plan a trip here</span>
+                      <span className="menu-sub">{p.sub}{' '}{t("· Plan a trip here")}</span>
                     </span>
                   </button>
                   <button className="icon-btn" onClick={() => removePlace(p)} aria-label={`Remove ${p.label}`}>
@@ -111,21 +112,21 @@ export default function SavedScreen({ route, openOnMap }) {
                 <button key={k} className="menu-row" onClick={() => navigate('map')}>
                   <span className="menu-icon faded"><Icon name={PLACE_KINDS[k].icon} size={20} /></span>
                   <span className="menu-text">
-                    <span className="menu-title">Add {PLACE_KINDS[k].label.toLowerCase()}</span>
-                    <span className="menu-sub">On the Map, search for it, then tap “Save as {PLACE_KINDS[k].label}”</span>
+                    <span className="menu-title">{t("Add")}{' '}{PLACE_KINDS[k].label.toLowerCase()}</span>
+                    <span className="menu-sub">{t("On the Map, search for it, then tap “Save as")}{' '}{PLACE_KINDS[k].label}”</span>
                   </span>
                   <Icon name="plus" size={18} className="menu-chevron" />
                 </button>
               ))}
             </div>
 
-            <div className="section-label"><span>Trips</span>{trips?.length > 0 && <span>{trips.length}</span>}</div>
+            <div className="section-label"><span>{t("Trips")}</span>{trips?.length > 0 && <span>{trips.length}</span>}</div>
             {trips === null ? (
               <Skeleton rows={2} />
             ) : trips.length === 0 ? (
               <div className="empty compact">
-                <p>On the Map, choose where you start and where you’re going, then tap the heart.</p>
-                <button className="btn primary pill-btn" onClick={() => navigate('map')}>Plan a trip</button>
+                <p>{t("On the Map, choose where you start and where you’re going, then tap the heart.")}</p>
+                <button className="btn primary pill-btn" onClick={() => navigate('map')}>{t("Plan a trip")}</button>
               </div>
             ) : (
               <div className="menu-card">
@@ -140,8 +141,8 @@ export default function SavedScreen({ route, openOnMap }) {
                           <span className="menu-title">{t.name}</span>
                           <span className="menu-sub">
                             {best
-                              ? `~${fmtMinutes(best.minutes)} · ${fareText(best, prefs.fareType)}${best.rides >= 2 ? ' · 1 transfer' : ''}`
-                              : from && to ? 'No route found right now' : 'A stop in this trip is no longer on the route'}
+                              ? `~${fmtMinutes(best.minutes)} · ${fareText(best, prefs.fareType)}${best.rides >= 2 ? t(" · 1 transfer") : ''}`
+                              : from && to ? t("No route found right now") : t("A stop in this trip is no longer on the route")}
                           </span>
                         </span>
                       </button>

@@ -7,25 +7,26 @@
 // is passed in (makeLandmarks) so each side can load the JSON its own way.
 import { distanceMeters, projectOnRoute } from './geo.js';
 import { normalize } from './assistant/knowledge.js';
+import { t } from './i18n.js';
 
 // How each kind shows on the map. Colors are on the light map tiles.
 export const LANDMARK_CATS = {
-  church: { label: 'Church', icon: 'church', color: '#92400e' },
-  government: { label: 'Government', icon: 'capitol', color: '#1d3557' },
-  school: { label: 'School', icon: 'school', color: '#1e40af' },
-  hospital: { label: 'Hospital', icon: 'hospital', color: '#dc2626' },
-  health: { label: 'Clinic / pharmacy', icon: 'hospital', color: '#e11d48' },
-  mall: { label: 'Mall', icon: 'shop', color: '#be185d' },
-  market: { label: 'Market', icon: 'market', color: '#c2410c' },
-  terminal: { label: 'Terminal', icon: 'terminal', color: '#374151' },
-  park: { label: 'Plaza / park', icon: 'tree', color: '#15803d' },
-  monument: { label: 'Monument', icon: 'monument', color: '#57534e' },
-  food: { label: 'Food', icon: 'food', color: '#ea580c' },
-  shop: { label: 'Store', icon: 'shop', color: '#0e7490' },
-  bank: { label: 'Bank / remittance', icon: 'bank', color: '#4d7c0f' },
-  police: { label: 'Police / fire / post', icon: 'shield', color: '#1e3a8a' },
-  fuel: { label: 'Gas station', icon: 'fuel', color: '#6b7280' },
-  hotel: { label: 'Hotel', icon: 'bed', color: '#7e22ce' },
+  church: { get label() { return t('Church'); }, icon: 'church', color: '#92400e' },
+  government: { get label() { return t('Government'); }, icon: 'capitol', color: '#1d3557' },
+  school: { get label() { return t('School'); }, icon: 'school', color: '#1e40af' },
+  hospital: { get label() { return t('Hospital'); }, icon: 'hospital', color: '#dc2626' },
+  health: { get label() { return t('Clinic / pharmacy'); }, icon: 'hospital', color: '#e11d48' },
+  mall: { get label() { return t('Mall'); }, icon: 'shop', color: '#be185d' },
+  market: { get label() { return t('Market'); }, icon: 'market', color: '#c2410c' },
+  terminal: { get label() { return t('Terminal'); }, icon: 'terminal', color: '#374151' },
+  park: { get label() { return t('Plaza / park'); }, icon: 'tree', color: '#15803d' },
+  monument: { get label() { return t('Monument'); }, icon: 'monument', color: '#57534e' },
+  food: { get label() { return t('Food'); }, icon: 'food', color: '#ea580c' },
+  shop: { get label() { return t('Store'); }, icon: 'shop', color: '#0e7490' },
+  bank: { get label() { return t('Bank / remittance'); }, icon: 'bank', color: '#4d7c0f' },
+  police: { get label() { return t('Police / fire / post'); }, icon: 'shield', color: '#1e3a8a' },
+  fuel: { get label() { return t('Gas station'); }, icon: 'fuel', color: '#6b7280' },
+  hotel: { get label() { return t('Hotel'); }, icon: 'bed', color: '#7e22ce' },
 };
 
 export const RANK_LABEL = ['Landmark', 'Well-known place', 'Place', 'Place'];

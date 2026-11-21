@@ -9,6 +9,7 @@
 // Pure functions, no browser APIs: the app, the AI server and the tests use
 // the same code. The data is passed in so each side loads it its own way.
 import { distanceMeters } from './geo.js';
+import { t } from './i18n.js';
 
 // Lines are stored as whole numbers (1e-5 degrees, about 1 m) relative to
 // this corner, each point as the change from the one before: much smaller.
@@ -90,17 +91,17 @@ const KIND_WEIGHT = { town: 0, barangay: 0.25, street: 0.6, subd: 0.6, sitio: 0.
 
 // The browse buttons, and which icon each kind of place gets.
 export const BROWSE = {
-  mall: { label: 'Malls & stores', short: 'Malls', icon: 'shop', cats: ['mall', 'shop'] },
-  school: { label: 'Schools', icon: 'school', cats: ['school'] },
-  market: { label: 'Markets', icon: 'market', cats: ['market'] },
-  hospital: { label: 'Hospitals & clinics', short: 'Hospitals', icon: 'hospital', cats: ['hospital', 'health'] },
-  terminal: { label: 'Terminals', icon: 'terminal', cats: ['terminal'] },
-  government: { label: 'Government', icon: 'capitol', cats: ['government', 'police'] },
-  church: { label: 'Churches', icon: 'church', cats: ['church'] },
-  food: { label: 'Food', icon: 'food', cats: ['food'] },
-  bank: { label: 'Banks & remittance', short: 'Banks', icon: 'bank', cats: ['bank'] },
-  tourist: { label: 'Tourist spots & resorts', short: 'Tourist spots', icon: 'tree', cats: ['tourist', 'hotel', 'park'] },
-  fuel: { label: 'Gas stations', short: 'Gas', icon: 'fuel', cats: ['fuel'] },
+  mall: { get label() { return t('Malls & stores'); }, get short() { return t('Malls'); }, icon: 'shop', cats: ['mall', 'shop'] },
+  school: { get label() { return t('Schools'); }, icon: 'school', cats: ['school'] },
+  market: { get label() { return t('Markets'); }, icon: 'market', cats: ['market'] },
+  hospital: { get label() { return t('Hospitals & clinics'); }, get short() { return t('Hospitals'); }, icon: 'hospital', cats: ['hospital', 'health'] },
+  terminal: { get label() { return t('Terminals'); }, icon: 'terminal', cats: ['terminal'] },
+  government: { get label() { return t('Government'); }, icon: 'capitol', cats: ['government', 'police'] },
+  church: { get label() { return t('Churches'); }, icon: 'church', cats: ['church'] },
+  food: { get label() { return t('Food'); }, icon: 'food', cats: ['food'] },
+  bank: { get label() { return t('Banks & remittance'); }, get short() { return t('Banks'); }, icon: 'bank', cats: ['bank'] },
+  tourist: { get label() { return t('Tourist spots & resorts'); }, get short() { return t('Tourist spots'); }, icon: 'tree', cats: ['tourist', 'hotel', 'park'] },
+  fuel: { get label() { return t('Gas stations'); }, get short() { return t('Gas'); }, icon: 'fuel', cats: ['fuel'] },
 };
 // Shown on the map unless the rider picks others (More → Preferences).
 export const DEFAULT_SHORTCUTS = ['mall', 'school', 'hospital', 'market'];

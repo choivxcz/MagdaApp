@@ -46,24 +46,24 @@ function WaitingAhead({ groups, otherDirection }) {
   return (
     <div className="waiting-list">
       <div className="row spread">
-        <span className="label icon-label"><Icon name="waiting" size={18} /> Waiting ahead</span>
+        <span className="label icon-label"><Icon name="waiting" size={18} />{' '}{t("Waiting ahead")}</span>
         <span className={`seat-chip ${total ? 'seats-few' : 'seats-unknown'}`}>{total} {total === 1 ? 'person' : 'people'}</span>
       </div>
       {groups.length ? (
         <ul>
           {groups.slice(0, 4).map((g) => (
             <li key={g.stop.id}>
-              <b>{g.people}</b> near {g.stop.short ?? g.stop.name}
+              <b>{g.people}</b>{' '}{t("near")}{' '}{g.stop.short ?? g.stop.name}
               <span className="sub">
-                {g.aheadM != null && ` · ${fmtDist(g.aheadM)} ahead`} · waiting {g.longest} min
+                {g.aheadM != null && ` · ${fmtDist(g.aheadM)} ahead`}{' '}{t("· waiting")}{' '}{g.longest}{' '}{t("min")}
               </span>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="hint">No one is waiting ahead right now.</p>
+        <p className="hint">{t("No one is waiting ahead right now.")}</p>
       )}
-      {otherDirection > 0 && <p className="fineprint">{otherDirection} waiting for the other direction.</p>}
+      {otherDirection > 0 && <p className="fineprint">{otherDirection}{' '}{t("waiting for the other direction.")}</p>}
     </div>
   );
 }
@@ -76,15 +76,15 @@ function SeatCounter({ taken, capacity, onChange }) {
   return (
     <div className="seat-counter">
       <div className="seat-head">
-        <span className="label">Passengers</span>
-        <span className={`seat-chip seats-${level}`}>{free === 0 ? 'Full' : `${free} free`}</span>
+        <span className="label">{t("Passengers")}</span>
+        <span className={`seat-chip seats-${level}`}>{free === 0 ? t("Full") : `${free} free`}</span>
       </div>
       <div className="seat-row">
-        <button className="seat-btn" onClick={() => onChange(taken - 1)} disabled={taken <= 0} aria-label="One passenger got off">−</button>
+        <button className="seat-btn" onClick={() => onChange(taken - 1)} disabled={taken <= 0} aria-label={t("One passenger got off")}>−</button>
         <div className="seat-count"><b key={taken} className="pop">{taken}</b> / {capacity}</div>
-        <button className="seat-btn" onClick={() => onChange(taken + 1)} disabled={taken >= capacity} aria-label="One passenger got on">+</button>
+        <button className="seat-btn" onClick={() => onChange(taken + 1)} disabled={taken >= capacity} aria-label={t("One passenger got on")}>+</button>
       </div>
-      <div className="seat-quick" role="group" aria-label="How full">
+      <div className="seat-quick" role="group" aria-label={t("How full")}>
         {quick.map(([label, n]) => (
           <button key={label} className={`btn small ${taken === n ? 'on' : ''}`} onClick={() => onChange(n)}>{label}</button>
         ))}
@@ -97,7 +97,7 @@ function SeatCounter({ taken, capacity, onChange }) {
 function TripStatusPicker({ value, lastTrip, disabled, onChange, onLastTrip }) {
   return (
     <div className="trip-status">
-      <span className="label">Status {disabled && <small>(start a trip first)</small>}</span>
+      <span className="label">{t("Status")}{' '}{disabled && <small>(start a trip first)</small>}</span>
       <div className="status-grid">
         {STATUS_KEYS.map((k) => {
           const s = TRIP_STATUS[k];
@@ -110,7 +110,7 @@ function TripStatusPicker({ value, lastTrip, disabled, onChange, onLastTrip }) {
         })}
       </div>
       <label className="switch-label last-trip">
-        <span><b>Last trip of the day</b> · Huling biyahe. Riders see it on the map.</span>
+        <span><b>{t("Last trip of the day")}</b>{' '}{t("· Huling biyahe. Riders see it on the map.")}</span>
         <input type="checkbox" className="switch" checked={lastTrip} disabled={disabled} onChange={(e) => onLastTrip(e.target.checked)} />
       </label>
     </div>
@@ -123,7 +123,7 @@ function Gaps({ gaps }) {
   const row = (label, g, warn) => (
     <div className={`gap-row ${warn ? 'warn' : ''}`}>
       <span className="label">{label}</span>
-      {g ? <span><b>{fmtDist(g.gap)}</b> · ~{fmtMin(g.gap)} · {g.j.plate}</span> : <span className="sub">None on this direction</span>}
+      {g ? <span><b>{fmtDist(g.gap)}</b> · ~{fmtMin(g.gap)} · {g.j.plate}</span> : <span className="sub">{t("None on this direction")}</span>}
     </div>
   );
   const bunched = gaps.ahead && gaps.ahead.gap < BUNCH_M;
@@ -131,7 +131,7 @@ function Gaps({ gaps }) {
     <div className="gaps">
       {row('Jeep ahead', gaps.ahead, bunched)}
       {row('Jeep behind', gaps.behind, false)}
-      {bunched && <p className="fineprint">You’re right behind another jeepney. Waiting a bit spreads out the trips, so both of you get more passengers.</p>}
+      {bunched && <p className="fineprint">{t("You’re right behind another jeepney. Waiting a bit spreads out the trips, so both of you get more passengers.")}</p>}
     </div>
   );
 }
@@ -468,7 +468,7 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
     haptic.tap();
     setLastTrip(v);
     lastTripRef.current = v;
-    push(v ? 'Marked as last trip' : 'Last trip removed');
+    push(v ? t("Marked as last trip") : t("Last trip removed"));
   }
 
   function unlock() {
@@ -486,7 +486,7 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
         route={route} me={me} jeepneys={others} waiting={waitingOnMap} activeDirection={direction} visible={visible}
         onReady={(m) => { mapRef.current = m; setMap(m); }} padding={{ top: 30, bottom: 460 }}
       />
-      <button className="sos-float" onClick={() => { haptic.alert(); setSosOpen(true); }} aria-label="SOS emergency">SOS</button>
+      <button className="sos-float" onClick={() => { haptic.alert(); setSosOpen(true); }} aria-label={t("SOS emergency")}>{t("SOS")}</button>
       <div className="map-float-right drive">
         <MapButtons map={map} onLocate={me ? () => map?.flyTo({ center: me, zoom: 15 }) : undefined} />
       </div>
@@ -511,9 +511,9 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
               {onTrip ? <><i className="live-dot" aria-hidden="true" />{TRIP_STATUS[tripStatus].label}</> : 'Off duty'}
             </span>
           </div>
-          {onTrip && unlocked && moving && <p className="hint">Unlocked for the konduktor until the next terminal.</p>}
+          {onTrip && unlocked && moving && <p className="hint">{t("Unlocked for the konduktor until the next terminal.")}</p>}
 
-          <div className="segmented" role="group" aria-label="Direction">
+          <div className="segmented" role="group" aria-label={t("Direction")}>
             {DIRECTION_KEYS.map((d) => (
               <button key={d} className={`${direction === d ? 'on' : ''} ${DIRECTIONS[d].className}`} onClick={() => changeDirection(d)}>
                 {DIRECTIONS[d].label}
@@ -522,9 +522,9 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
           </div>
 
           {onTrip ? (
-            <button className="btn danger big-btn icon-text center" onClick={stop}><Icon name="stop" size={18} fill="currentColor" /> End trip</button>
+            <button className="btn danger big-btn icon-text center" onClick={stop}><Icon name="stop" size={18} fill="currentColor" />{' '}{t("End trip")}</button>
           ) : (
-            <button className="btn primary big-btn icon-text center" onClick={start}><Icon name="play" size={18} fill="currentColor" /> Start trip</button>
+            <button className="btn primary big-btn icon-text center" onClick={start}><Icon name="play" size={18} fill="currentColor" />{' '}{t("Start trip")}</button>
           )}
           {status && <p className="hint">{status}</p>}
 
@@ -541,34 +541,34 @@ export default function DriveScreen({ route, userId, driver, visible, jeepneys =
           <button className="today-card" onClick={() => navigate('more/earnings')}>
             <span className="menu-icon"><Icon name="fare" size={20} /></span>
             <span className="menu-text">
-              <span className="menu-title">Today · {today.trips} trip{today.trips === 1 ? '' : 's'} · {today.km.toFixed(1)} km · {fmtHours(today.seconds)}</span>
-              <span className="menu-sub">Earnings log: kita, krudo, boundary</span>
+              <span className="menu-title">{t("Today ·")}{' '}{today.trips === 1 ? t('1 trip') : t('{n} trips', { n: today.trips })} · {today.km.toFixed(1)}{' '}{t("km ·")}{' '}{fmtHours(today.seconds)}</span>
+              <span className="menu-sub">{t("Earnings log: kita, krudo, boundary")}</span>
             </span>
             <Icon name="chevron" size={18} className="menu-chevron" />
           </button>
 
           <div className="voice-setting">
-            <span className="label icon-label"><Icon name="chat" size={16} /> Voice announcements</span>
+            <span className="label icon-label"><Icon name="chat" size={16} />{' '}{t("Voice announcements")}</span>
             {voiceSupported() ? (
               <div className="row">
                 <Segmented small value={voice} onChange={(v) => setPrefs({ driverVoice: v })} options={[['tl', 'Tagalog'], ['en', 'English'], ['off', 'Off']]} />
-                {voice !== 'off' && <button className="link-btn small" onClick={() => say(PHRASES.test(voice), voice)}>Test</button>}
+                {voice !== 'off' && <button className="link-btn small" onClick={() => say(PHRASES.test(voice), voice)}>{t("Test")}</button>}
               </div>
             ) : (
-              <span className="sub">This phone can’t speak announcements.</span>
+              <span className="sub">{t("This phone can’t speak announcements.")}</span>
             )}
           </div>
 
           {(!photos.avatar || !photos.jeepney) && (
             <p className="hint">
-              Riders see your {!photos.avatar && !photos.jeepney ? 'photo and jeepney photo' : !photos.avatar ? 'profile picture' : 'jeepney photo'} when they tap your jeepney.{' '}
-              <button className="link-btn small" onClick={() => navigate('more/account')}>Add {!photos.avatar && !photos.jeepney ? 'photos' : 'photo'}</button>
+              {t("Riders see your")}{' '}{!photos.avatar && !photos.jeepney ? 'photo and jeepney photo' : !photos.avatar ? 'profile picture' : 'jeepney photo'}{' '}{t("when they tap your jeepney.")} 
+              <button className="link-btn small" onClick={() => navigate('more/account')}>{t("Add")}{' '}{!photos.avatar && !photos.jeepney ? 'photos' : 'photo'}</button>
             </p>
           )}
           <p className="fineprint">
             While the jeepney moves, the screen locks and announcements are spoken, so you never need to touch the phone
-            (Anti-Distracted Driving Act). {wakeLockSupported() ? 'The screen stays on during a trip.' : 'Keep the screen on during a trip, or riders stop seeing your jeepney.'}{' '}
-            Direction switches by itself at each terminal.
+            (Anti-Distracted Driving Act). {wakeLockSupported() ? t("The screen stays on during a trip.") : t("Keep the screen on during a trip, or riders stop seeing your jeepney.")}{' '}
+            {t("Direction switches by itself at each terminal.")}
           </p>
         </section>
       )}

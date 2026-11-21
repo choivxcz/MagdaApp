@@ -4,6 +4,7 @@ import { DIRECTIONS } from '../lib/directions.js';
 import { distanceMeters } from '../lib/geo.js';
 import { setPrefs } from '../lib/prefs.js';
 import { getMyWaiting, startWaiting, stopWaiting } from '../lib/waiting.js';
+import { t } from '../lib/i18n.js';
 
 const MOVED_M = 60; // farther than this from my signal: offer to move it
 
@@ -53,7 +54,7 @@ export default function WaitingCard({ route, user, point, directions }) {
     try {
       setMine(await startWaiting({ routeId: route.id, direction: dir, point: at, people: count }));
     } catch (e) {
-      setError(/function|relation|schema/i.test(e.message) ? 'Waiting signals aren’t set up on the server yet.' : `Couldn’t send: ${e.message}`);
+      setError(/function|relation|schema/i.test(e.message) ? t("Waiting signals aren’t set up on the server yet.") : `Couldn’t send: ${e.message}`);
     } finally {
       setBusy(false);
     }
@@ -84,17 +85,17 @@ export default function WaitingCard({ route, user, point, directions }) {
         <div className="waiting-head">
           <span className="waiting-icon"><Icon name="waiting" size={22} /></span>
           <div>
-            <b>Drivers can see you’re waiting</b>
+            <b>{t("Drivers can see you’re waiting")}</b>
             <span className="sub">
-              {mine.people} {mine.people === 1 ? 'person' : 'people'} · {dirShort(mine.direction)}{place ? ` · near ${place}` : ''} · ends in {minsLeft} min
+              {mine.people} {mine.people === 1 ? 'person' : 'people'} · {dirShort(mine.direction)}{place ? ` · near ${place}` : ''}{' '}{t("· ends in")}{' '}{minsLeft}{' '}{t("min")}
             </span>
           </div>
         </div>
         <div className="waiting-actions">
-          <button className="btn small primary icon-text" onClick={stop} disabled={busy}><Icon name="check" size={16} /> I got a ride</button>
-          {moved && <button className="btn small" onClick={() => send(directions.includes(mine.direction) ? mine.direction : direction ?? mine.direction, point, mine.people)} disabled={busy}>Move here</button>}
-          {minsLeft <= 5 && <button className="btn small" onClick={() => send(mine.direction, mine.point, mine.people)} disabled={busy}>+20 min</button>}
-          <button className="btn small" onClick={stop} disabled={busy}>Cancel</button>
+          <button className="btn small primary icon-text" onClick={stop} disabled={busy}><Icon name="check" size={16} />{' '}{t("I got a ride")}</button>
+          {moved && <button className="btn small" onClick={() => send(directions.includes(mine.direction) ? mine.direction : direction ?? mine.direction, point, mine.people)} disabled={busy}>{t("Move here")}</button>}
+          {minsLeft <= 5 && <button className="btn small" onClick={() => send(mine.direction, mine.point, mine.people)} disabled={busy}>{t("+20 min")}</button>}
+          <button className="btn small" onClick={stop} disabled={busy}>{t("Cancel")}</button>
         </div>
         {error && <p className="warn">{error}</p>}
       </div>
@@ -109,12 +110,12 @@ export default function WaitingCard({ route, user, point, directions }) {
         <div className="waiting-head">
           <span className="waiting-icon"><Icon name="waiting" size={22} /></span>
           <div>
-            <b>Tell drivers you’re waiting here</b>
-            <span className="sub">Sign in so jeepney drivers can see where you wait.</span>
+            <b>{t("Tell drivers you’re waiting here")}</b>
+            <span className="sub">{t("Sign in so jeepney drivers can see where you wait.")}</span>
           </div>
         </div>
         <div className="waiting-actions">
-          <button className="btn small primary" onClick={() => setPrefs({ guest: false })}>Sign in</button>
+          <button className="btn small primary" onClick={() => setPrefs({ guest: false })}>{t("Sign in")}</button>
         </div>
       </div>
     );
@@ -125,13 +126,13 @@ export default function WaitingCard({ route, user, point, directions }) {
       <div className="waiting-head">
         <span className="waiting-icon"><Icon name="waiting" size={22} /></span>
         <div>
-          <b>Waiting for a jeepney here?</b>
-          <span className="sub">Drivers on the road will see this spot and how many you are (not your name).</span>
+          <b>{t("Waiting for a jeepney here?")}</b>
+          <span className="sub">{t("Drivers on the road will see this spot and how many you are (not your name).")}</span>
         </div>
       </div>
       {directions.length > 1 && (
         <div className="waiting-row">
-          <span className="label">Going</span>
+          <span className="label">{t("Going")}</span>
           <div className="dir-filter">
             {directions.map((d) => (
               <button key={d} className={`${direction === d ? 'on' : ''} ${DIRECTIONS[d].className}`} onClick={() => setPickDir(d)}>
@@ -142,15 +143,15 @@ export default function WaitingCard({ route, user, point, directions }) {
         </div>
       )}
       <div className="waiting-row">
-        <span className="label">How many?</span>
+        <span className="label">{t("How many?")}</span>
         <div className="people-stepper">
-          <button onClick={() => setPeople((n) => Math.max(1, n - 1))} disabled={people <= 1} aria-label="Fewer people">−</button>
+          <button onClick={() => setPeople((n) => Math.max(1, n - 1))} disabled={people <= 1} aria-label={t("Fewer people")}>−</button>
           <b aria-live="polite">{people}</b>
-          <button onClick={() => setPeople((n) => Math.min(6, n + 1))} disabled={people >= 6} aria-label="More people">+</button>
+          <button onClick={() => setPeople((n) => Math.min(6, n + 1))} disabled={people >= 6} aria-label={t("More people")}>+</button>
         </div>
       </div>
       <button className="btn primary wide icon-text center" onClick={() => send()} disabled={busy || !direction}>
-        {direction ? <><Icon name="waiting" size={20} /> I’m waiting here</> : 'Choose your direction first'}
+        {direction ? <><Icon name="waiting" size={20} />{' '}{t("I’m waiting here")}</> : 'Choose your direction first'}
       </button>
       {error && <p className="warn">{error}</p>}
     </div>
