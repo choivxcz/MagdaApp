@@ -48,7 +48,7 @@ const bodySize = (body) => {
 // Only requests that always go over the internet: live jeepneys and accounts
 // (Supabase), place search, walking directions and the AI. Map files are
 // left out: after the first time they come from the phone, not the network.
-const LIVE = /supabase\.co|photon\.komoot\.io|routing\.openstreetmap\.de|router\.project-osrm\.org|valhalla1\.openstreetmap\.de|\/api\//;
+const LIVE = /supabase\.co|photon\.komoot\.io|routing\.openstreetmap\.de|router\.project-osrm\.org|valhalla1\.openstreetmap\.de|api\.open-meteo\.com|\/api\//;
 
 if (typeof window !== 'undefined' && window.fetch && !window.fetch.__metered) {
   const original = window.fetch.bind(window);

@@ -13,6 +13,7 @@ import {
 import { planJourneys, networkFromRoutes, describeOption, TAG_LABEL } from '../src/lib/planner.js';
 import { searchPlaces, serviceBox, inBox, stopPlace } from '../src/lib/places.js';
 import { makeLandmarks } from '../src/lib/landmarks.js';
+import { makePlaceIndex } from '../src/lib/placeIndex.js';
 import { STATUS_KEYS } from '../src/lib/tripStatus.js';
 
 const route = prepareRoute(JSON.parse(readFileSync(join(process.cwd(), 'src/data/route-magdalena-santa-cruz.json'), 'utf8')));
@@ -21,6 +22,9 @@ const BOX = serviceBox(route);
 const CENTER = [(route.bounds[0][0] + route.bounds[1][0]) / 2, (route.bounds[0][1] + route.bounds[1][1]) / 2];
 const TIP_CATEGORIES = ['route_change', 'boarding', 'fare', 'terminal', 'road', 'other'];
 const landmarks = makeLandmarks(JSON.parse(readFileSync(join(process.cwd(), 'src/data/landmarks.json'), 'utf8')), route);
+// Every street, barangay and named place around the route (npm run places).
+let places = null;
+try { places = makePlaceIndex(JSON.parse(readFileSync(join(process.cwd(), 'src/data/places.json'), 'utf8'))); } catch { /* not built yet */ }
 // The big ones, for the system prompt: "Cathedral ... (church, near Sta. Cruz Plaza)".
 const LANDMARKS_TEXT = landmarks.list
   .filter((l) => l.rank <= 1)
@@ -141,6 +145,9 @@ async function resolvePlace(text, ctx) {
   if (lm && (normalize(lm.label).includes(t) || t.includes(normalize(lm.label)))) {
     return { place: lm, searched: true, landmark: true };
   }
+  // Any street, barangay, sitio or store from the app's own list (no network).
+  const local = places?.search(text, { near: CENTER, limit: 1 })[0];
+  if (local) return { place: local, searched: true };
   try {
     const [hit] = await searchPlaces(text, { box: BOX, near: CENTER, limit: 1, headers: { 'User-Agent': 'SakayLaguna/1.0 (commuter app)' } });
     if (hit) return { place: hit, searched: true };

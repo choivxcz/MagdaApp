@@ -14,6 +14,9 @@ import SavedScreen from './screens/SavedScreen.jsx';
 import MoreScreen from './screens/MoreScreen.jsx';
 // Only drivers need the Drive tab: riders never download it.
 const DriveScreen = lazy(() => import('./screens/DriveScreen.jsx'));
+const CommunityScreen = lazy(() => import('./screens/CommunityScreen.jsx'));
+import { PageSkeleton } from './components/ui.jsx';
+import OfflineRibbon from './components/OfflineRibbon.jsx';
 import NewPasswordScreen from './screens/NewPasswordScreen.jsx';
 import routeData from './data/route-magdalena-santa-cruz.json';
 
@@ -21,7 +24,7 @@ const route = prepareRoute(routeData);
 
 // "#/more/preferences" -> ["more", "preferences"]
 function useHashPath() {
-  const read = () => window.location.hash.replace(/^#\/?/, '') || 'map';
+  const read = () => window.location.hash.replace(/^#\/?/, '').split('?')[0] || 'map'; // "?..." is a shared trip
   const [path, setPath] = useState(read);
   useEffect(() => {
     const onChange = () => {
@@ -59,6 +62,7 @@ function Shell() {
   const tabs = [
     { id: 'map', label: 'Map', icon: 'map' },
     { id: 'routes', label: 'Routes', icon: 'routes' },
+    { id: 'community', label: 'Community', icon: 'chat' },
     { id: 'saved', label: 'Saved', icon: 'heart' },
     ...(driver ? [{ id: 'drive', label: driverOnTrip ? 'On trip' : 'Drive', icon: 'drive' }] : []),
     { id: 'more', label: 'More', icon: 'more' },
@@ -94,6 +98,7 @@ function Shell() {
   return (
     <div className="app">
       {toast}
+      <OfflineRibbon />
       <main className="content">
         {/* Map and Drive stay mounted so the map and an active trip survive tab switches. */}
         <div className="screen" hidden={current !== 'map'}>
@@ -107,6 +112,7 @@ function Shell() {
           </div>
         )}
         {current === 'routes' && <RoutesScreen route={route} jeepneys={live.jeepneys} sub={sub} openOnMap={openOnMap} />}
+        {current === 'community' && <Suspense fallback={<PageSkeleton />}><CommunityScreen route={route} sub={sub} openOnMap={openOnMap} /></Suspense>}
         {current === 'saved' && <SavedScreen route={route} openOnMap={openOnMap} />}
         {current === 'more' && <MoreScreen route={route} sub={sub} />}
       </main>

@@ -18,6 +18,7 @@
     "admin:mfa-reset": "node scripts/admin-mfa-reset.mjs",
     "check:email": "node scripts/check-email.mjs",
     "landmarks": "node scripts/fetch-landmarks.mjs",
+    "places": "node scripts/fetch-places.mjs",
     "deploy:web": "vercel deploy --prod --yes"
   },
   "dependencies": {

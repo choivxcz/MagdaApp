@@ -13,8 +13,10 @@ import { saveTrip, savePlace, PLACE_KINDS } from '../lib/account.js';
 import { useSavedPlaces } from '../lib/useSavedPlaces.js';
 import { useTips, tipsNear, TIP_CATEGORIES, tipAge } from '../lib/community.js';
 import { isDemo } from '../lib/supabase.js';
-import { planJourneys, networkFromRoutes, refineWithSakayan, withMeasuredSteps, PLAN, fmtMinutes, fmtMeters } from '../lib/planner.js';
+import { planJourneys, networkFromRoutes, refineWithSakayan, withMeasuredSteps, alignWithPaths, PLAN, fmtMinutes, fmtMeters } from '../lib/planner.js';
 import { nameForPoint, stopPlace } from '../lib/places.js';
+import { loadPlaces } from '../lib/placeData.js';
+import { BROWSE, DEFAULT_SHORTCUTS } from '../lib/placeIndex.js';
 import InstallHint from '../components/InstallHint.jsx';
 import WaitingCard from '../components/WaitingCard.jsx';
 import DriverSheet from '../components/DriverSheet.jsx';
@@ -28,6 +30,10 @@ import { landmarks } from '../lib/landmarkData.js';
 import { LANDMARK_CATS, RANK_LABEL, offRoute } from '../lib/landmarks.js';
 import { addRecent } from '../lib/recents.js';
 import { inService, riderStatusText } from '../lib/tripStatus.js';
+import { useCommunityPlaces, terminalNear, VEHICLES, POST_KINDS, fareText as communityFare } from '../lib/communityPosts.js';
+import { useWeather, describeWeather } from '../lib/weather.js';
+import { parseTripLink } from '../lib/share.js';
+import ShareSheet from '../components/ShareSheet.jsx';
 
 const AVG_SPEED_MPS = 20 / 3.6; // jeepneys average ~20 km/h with stops
 const SHEET_MIN_PX = 236; // the small panel's height (styles.css --sheet-h)
@@ -57,6 +63,41 @@ function LandmarkCard({ landmark, route, onGo, onStart, onClose }) {
         <button className="btn small" onClick={onStart}><Icon name="locate" size={15} /> Start here</button>
       </div>
     </div>
+  );
+}
+
+// The card for a tricycle route or terminal added by commuters.
+function CommunityCard({ place, onGo, onStart, onClose }) {
+  const kind = POST_KINDS[place.kind] ?? POST_KINDS.terminal;
+  const fares = communityFare(place.fares ?? {});
+  return (
+    <div className="landmark-card" role="dialog" aria-label={place.name}>
+      <div className="landmark-card-head">
+        <span className="landmark-icon community"><Icon name={kind.icon} size={18} /></span>
+        <div>
+          <b>{place.name}</b>
+          <span className="sub">{kind.label} · from commuters{place.vehicles?.length ? ` · ${place.vehicles.map((v) => VEHICLES[v]?.label ?? v).join(', ')}` : ''}</span>
+          {(fares || place.hours) && <span className="sub">{[fares, place.hours].filter(Boolean).join(' · ')}</span>}
+          {place.confirms > 0 && <span className="sub">{place.confirms} commuter{place.confirms === 1 ? '' : 's'} confirmed this</span>}
+        </div>
+        <button className="icon-btn small" onClick={onClose} aria-label="Close"><Icon name="close" size={16} /></button>
+      </div>
+      <div className="landmark-actions">
+        {place.point && <button className="btn primary small" onClick={onGo}><Icon name="pin" size={15} /> Go here</button>}
+        {place.point && <button className="btn small" onClick={onStart}><Icon name="locate" size={15} /> Start here</button>}
+        <button className="btn small" onClick={() => navigate('community')}><Icon name="chat" size={15} /> Community</button>
+      </div>
+    </div>
+  );
+}
+
+function WeatherChip({ weather }) {
+  if (!weather) return null;
+  const d = describeWeather(weather.code);
+  return (
+    <span className={`weather-chip ${weather.rainSoon ? 'rain' : ''}`} title={weather.rainSoon ? 'Rain is likely in the next 3 hours' : d.text}>
+      <Icon name={weather.rainSoon && d.icon !== 'storm' ? 'rain' : d.icon} size={15} /> {weather.temp}°{weather.rainSoon ? ' · rain soon' : ''}
+    </span>
   );
 }
 
@@ -116,6 +157,8 @@ function useStepPaths(option, skipFirstWalk) {
   return paths;
 }
 
+const routeCenterOf = (route) => [(route.bounds[0][0] + route.bounds[1][0]) / 2, (route.bounds[0][1] + route.bounds[1][1]) / 2];
+const communityPlace = (p) => ({ kind: 'place', id: `community:${p.id}`, label: p.name, sub: `${POST_KINDS[p.kind]?.label ?? 'Place'} · from commuters`, point: p.point ?? p.path?.[0], icon: p.kind === 'terminal' ? 'terminal' : 'routes' });
 const PICK_TEXT = { from: 'Tap the map where you’ll start', to: 'Tap the map where you’re going' };
 
 export default function MapScreen({ route, jeepneys, error, request, visible, onRequest, onTracking }) {
@@ -139,6 +182,11 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   const [openJeepId, setOpenJeepId] = useState(null);
   const closeJeep = useCallback(() => setOpenJeepId(null), []);
   const [chatOpen, setChatOpen] = useState(false);
+  const [searchRequest, setSearchRequest] = useState(null); // open the search from a shortcut
+  const [selectedCp, setSelectedCp] = useState(null); // community route / terminal whose card is open
+  const [sharing, setSharing] = useState(false);
+  const community = useCommunityPlaces(route.id);
+  const weather = useWeather(routeCenterOf(route), visible && !isDemo);
   const handleDrag = useRef(null);
   const screenRef = useRef(null);
   const [chat, setChat] = useState({ messages: [GREETING], busy: false, memory: {} });
@@ -151,14 +199,16 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   const sheetRef = useRef(null);
   const stopById = (id) => stops.find((s) => s.id === id);
 
-  // Give a tapped or GPS spot a readable name ("Near Jollibee, Barangay III").
-  // (Skipped with Data saver: the spot is then just "Pinned spot".)
+  // Give a tapped or GPS spot a readable name ("Rizal St, Poblacion,
+  // Magdalena") from the streets and barangays on the phone: no load used.
+  // Only if we know nothing there do we ask online (not with Data saver).
   const nameLater = useCallback((setter, place) => {
-    if (isDataSaver()) return;
-    nameForPoint(place.point).then((name) => {
-      if (!name) return;
-      setter((cur) => (cur && cur.point === place.point ? { ...cur, ...(cur.kind === 'gps' ? { nearName: name } : { label: name }) } : cur));
-    });
+    const apply = (name) => setter((cur) => (cur && cur.point === place.point ? { ...cur, ...(cur.kind === 'gps' ? { nearName: name } : { label: name }) } : cur));
+    const online = () => { if (!isDataSaver()) nameForPoint(place.point).then((name) => name && apply(name)); };
+    loadPlaces().then((idx) => {
+      const r = idx.reverse(place.point);
+      if (r) apply(r.label); else online();
+    }).catch(online);
   }, []);
 
   const chooseFrom = useCallback((place) => {
@@ -172,9 +222,42 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
     if (place?.kind === 'map') nameLater(setTo, place);
   }, [nameLater]);
 
+  // A shared trip link ("#/map?to=..."): open it once, then tidy the address.
+  useEffect(() => {
+    const shared = parseTripLink(window.location.hash, route);
+    if (!shared) return;
+    if (shared.from) setFrom(shared.from);
+    if (shared.to) setTo(shared.to);
+    if (!shared.from) setMsg({ kind: 'hint', text: 'Shared trip: now set where you’ll start (search, GPS or tap the map).' });
+    window.history.replaceState(null, '', '#/map');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Move the map to something shown from Community once the map is on screen
+  // (it has no size while another tab is open).
+  const pendingFocus = useRef(null);
+  useEffect(() => {
+    const pts = pendingFocus.current;
+    if (!visible || !map || !pts) return undefined;
+    const t = setTimeout(() => {
+      pendingFocus.current = null;
+      const xs = pts.map((c) => c[0]);
+      const ys = pts.map((c) => c[1]);
+      map.fitBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], { padding: 80, maxZoom: 17, duration: 600 });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [visible, map, request]);
+
   // Open a trip sent from Saved, Routes or the AI.
   useEffect(() => {
     if (!request) return;
+    if (request.focus) {
+      // "Show on map" from Community or Routes.
+      const f = request.focus;
+      setSelectedLm(null);
+      setSelectedCp(community.find((c) => c.id === f.id) ?? f);
+      pendingFocus.current = f.path?.length ? f.path : f.point ? [f.point] : null;
+      return;
+    }
     setSelectedId(null);
     if (request.from || request.to) {
       if (request.from) setFrom(request.from);
@@ -222,10 +305,14 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   const paths = useStepPaths(baseOption, useSakayanWalk);
   const option = useMemo(() => {
     const refined = useSakayanWalk ? refineWithSakayan(baseOption, sakayan) : baseOption;
-    return withMeasuredSteps(refined, (s) => {
+    const pathOf = (s) => {
       const p = paths[stepKey(s)];
-      return p && p !== 'failed' ? p.meters : null;
-    });
+      return p && p !== 'failed' ? p : null;
+    };
+    const measured = withMeasuredSteps(refined, (s) => pathOf(s)?.meters ?? null);
+    // Get on where the real road first reaches the route (not after riding
+    // a tricycle along the jeepney's route), and off where it leaves it.
+    return alignWithPaths(measured, pathOf);
   }, [baseOption, sakayan, paths, useSakayanWalk]);
   const firstRide = option?.steps.find((s) => s.type === 'ride') ?? null;
   // While a trip is planned, the app checks for jeepneys more often (to
@@ -263,7 +350,8 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
         return;
       }
       if (i === 0 && s.type === 'walk' && useSakayanWalk) { g.walks.push(sakayan.walk?.coords); return; }
-      const p = paths[stepKey(s)];
+      // A step moved by alignWithPaths carries its shortened path.
+      const p = s.coords ? { coords: s.coords } : paths[stepKey(s)];
       if (p && p !== 'failed') (s.type === 'tricycle' ? g.trikes : g.walks).push(p.coords);
     });
     return g;
@@ -313,7 +401,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
 
   function onMapTap(pt) {
     // First tap away from an open landmark card just closes it.
-    if (selectedLm && !pickTarget) { setSelectedLm(null); return; }
+    if ((selectedLm || selectedCp) && !pickTarget) { setSelectedLm(null); setSelectedCp(null); return; }
     const place = { kind: 'map', point: pt, label: 'Pinned spot' };
     if (pickTarget === 'to') chooseTo(place);
     else chooseFrom(place);
@@ -332,6 +420,26 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
     }
     haptic.tap();
     setSelectedLm(l);
+  }
+
+  function onCommunityTap(id) {
+    const p = community.find((c) => c.id === id);
+    if (!p) return;
+    if (pickTarget) {
+      onChoose(pickTarget, communityPlace(p));
+      setPickTarget(null);
+      return;
+    }
+    haptic.tap();
+    setSelectedLm(null);
+    setSelectedCp(p);
+  }
+
+  function goWithCommunity(field) {
+    const place = communityPlace(selectedCp);
+    setSelectedCp(null);
+    addRecent(place);
+    onChoose(field, place);
   }
 
   function goWithLandmark(field) {
@@ -438,6 +546,10 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
   const list = firstRide ? approaching : [...shown].sort((a, b) => a.direction.localeCompare(b.direction));
   const firstWalkState = useSakayanWalk ? (sakayan.loading ? 'loading' : sakayan.walkFailed ? 'failed' : null) : null;
   const quickPlaces = [...saved.places, ...stops.map(stopPlace)];
+  const shortcuts = (prefs.shortcuts ?? DEFAULT_SHORTCUTS).filter((k) => BROWSE[k]);
+  // A tricycle terminal commuters marked near where the tricycle starts.
+  const trikeStep = option?.steps.find((s) => s.type === 'tricycle');
+  const trikeTerminal = trikeStep && community.length ? terminalNear(community, trikeStep.from) : null;
 
   const planProblem = plan && !option && {
     same: 'Your start and destination are the same place.',
@@ -452,6 +564,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
         route={route} jeepneys={shown} pickup={from?.point ?? null} dest={to?.point ?? null} me={me} guide={guide} onPick={onMapTap} onJeepTap={setOpenJeepId}
         activeDirection={activeDirection} visible={visible} onReady={setMap}
         landmarks={landmarks.list} showLandmarks={showLandmarks} onLandmarkTap={onLandmarkTap} selectedLandmark={selectedLm?.id}
+        community={community} onCommunityTap={onCommunityTap}
         padding={{ top: 170, bottom: expanded ? 420 : 230 }}
       />
 
@@ -466,13 +579,28 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
           <TripSearch
             route={route} from={from} to={to} savedPlaces={saved.places} near={from?.point ?? me ?? routeCenter}
             onChoose={onChoose} onLocate={locateMe} onPickOnMap={setPickTarget} onSwap={swap} onOpenChange={setSearchOpen}
+            openRequest={searchRequest}
           />
         )}
         {!searchOpen && !pickTarget && (
           <ScrollRow className="chip-row-wrap" trackClassName="chip-row" role="list" aria-label="Quick destinations">
-            {quickPlaces.map((p) => (
-              <button key={p.id ?? p.stopId} role="listitem" className={`chip ${to && placeKey(to) === placeKey(p) ? 'on' : ''} ${p.kind === 'saved' ? 'saved' : ''}`} onClick={() => onChoose('to', p)}>
-                <Icon name={p.icon} size={15} /> {p.kind === 'saved' ? p.label : stopById(p.stopId)?.short ?? p.label}
+            <WeatherChip weather={weather} />
+            {saved.places.map((p) => (
+              <button key={p.id} role="listitem" className={`chip saved ${to && placeKey(to) === placeKey(p) ? 'on' : ''}`} onClick={() => onChoose('to', p)}>
+                <Icon name={p.icon} size={15} /> {p.label}
+              </button>
+            ))}
+            {shortcuts.map((k) => (
+              <button key={k} role="listitem" className="chip kind" onClick={() => { haptic.tap(); setSearchRequest({ field: 'to', browse: k, at: Date.now() }); }}>
+                <Icon name={BROWSE[k].icon} size={15} /> {BROWSE[k].short ?? BROWSE[k].label}
+              </button>
+            ))}
+            <button role="listitem" className="chip ghost" onClick={() => navigate('more/preferences')} aria-label="Edit shortcuts">
+              <Icon name="pencil" size={14} /> Edit
+            </button>
+            {quickPlaces.filter((p) => p.kind === 'stop').map((p) => (
+              <button key={p.stopId} role="listitem" className={`chip ${to && placeKey(to) === placeKey(p) ? 'on' : ''}`} onClick={() => onChoose('to', p)}>
+                <Icon name={p.icon} size={15} /> {stopById(p.stopId)?.short ?? p.label}
               </button>
             ))}
           </ScrollRow>
@@ -493,6 +621,10 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
           </button>
         </MapButtons>
       </div>
+
+      {selectedCp && !searchOpen && (
+        <CommunityCard place={selectedCp} onGo={() => goWithCommunity('to')} onStart={() => goWithCommunity('from')} onClose={() => setSelectedCp(null)} />
+      )}
 
       {selectedLm && !searchOpen && (
         <LandmarkCard
@@ -579,7 +711,10 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
                   )}
                 </div>
               </div>
-              <button className="round-action" onClick={onSave} aria-label="Save trip"><Icon name="heart" size={22} /></button>
+              <div className="round-actions">
+                <button className="round-action" onClick={() => { haptic.tap(); setSharing(true); }} aria-label="Share trip"><Icon name="share" size={21} /></button>
+                <button className="round-action" onClick={onSave} aria-label="Save trip"><Icon name="heart" size={22} /></button>
+              </div>
             </div>
             <OptionCards options={options.map((o) => (o.id === option.id ? option : o))} selectedId={option.id} onSelect={(id) => { haptic.tap(); setSelectedId(id); }} fareType={fareMain} />
           </>
@@ -640,6 +775,13 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
         {option && (
           <section className="journey" aria-label="Trip steps">
             <Timeline option={option} from={from} to={to} fareType={fareMain} firstWalkState={firstWalkState} onRetryWalk={sakayan?.retry} />
+            {trikeTerminal && (
+              <p className="trike-hint">
+                <Icon name="terminal" size={16} />
+                <span>Tricycle terminal {Math.round(trikeTerminal.meters) < 40 ? 'right there' : `${fmtMeters(trikeTerminal.meters)} away`}: <b>{trikeTerminal.name}</b>{communityFare(trikeTerminal.fares) ? ` · ${communityFare(trikeTerminal.fares)}` : ''} <span className="sub">(from commuters)</span></span>
+              </p>
+            )}
+            <button className="link-btn small report-link" onClick={() => navigate('more/report')}>Something wrong with your ride? Report it</button>
           </section>
         )}
 
@@ -658,7 +800,7 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
                     <span className="sub"> · {t.author}, {tipAge(t.createdAt)}{t.helpful ? ` · ${t.helpful} found helpful` : ''}</span>
                   </li>
                 ))}
-                <li><button className="link-btn small" onClick={() => navigate('routes/community')}>See all tips or share one</button></li>
+                <li><button className="link-btn small" onClick={() => navigate('community')}>See all tips or share one</button></li>
               </ul>
             )}
           </div>
@@ -708,6 +850,10 @@ export default function MapScreen({ route, jeepneys, error, request, visible, on
 
       {openJeepId && (
         <DriverSheet jeepId={openJeepId} jeep={jeepneys.find((j) => j.id === openJeepId) ?? null} onClose={closeJeep} />
+      )}
+
+      {sharing && option && (
+        <ShareSheet from={from} to={to} option={option} fareType={fareMain} route={route} onClose={() => setSharing(false)} />
       )}
 
       {chatOpen && <AssistantSheet chat={chat} onSend={askAI} onShowTrip={showTrip} onClose={closeChat} />}

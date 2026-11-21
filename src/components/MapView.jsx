@@ -12,7 +12,8 @@ import { markerTag, inService } from '../lib/tripStatus.js';
 maplibregl.setWorkerUrl(workerUrl);
 
 // Free OpenStreetMap-based tiles, no API key needed.
-const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+export const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+export const COMMUNITY_COLOR = '#0f766e';
 
 // Jeepneys glide to their new spot instead of jumping, so the map feels
 // alive even with fewer updates (which saves data). Big jumps (a phone that
@@ -214,6 +215,38 @@ function landmarkAt(map, point) {
   return f ? { ...f.properties, coord: f.geometry.coordinates } : null;
 }
 
+// Tricycle / e-trike routes and terminals added by commuters (approved).
+const COMMUNITY_LAYERS = ['community-terminals', 'community-routes-hit'];
+function communityData(list) {
+  return {
+    type: 'FeatureCollection',
+    features: (list ?? []).map((p) => (p.kind === 'local_route' && p.path?.length > 1
+      ? { type: 'Feature', properties: { id: p.id, kind: p.kind, name: p.name }, geometry: { type: 'LineString', coordinates: p.path } }
+      : { type: 'Feature', properties: { id: p.id, kind: p.kind, name: p.name }, geometry: { type: 'Point', coordinates: p.point } })),
+  };
+}
+function addCommunityLayers(map, list) {
+  if (!map.getStyle() || map.getSource('community')) return;
+  map.addSource('community', { type: 'geojson', data: communityData(list) });
+  const before = map.getLayer('guide-trike-casing') ? 'guide-trike-casing' : undefined;
+  const lines = ['==', ['geometry-type'], 'LineString'];
+  map.addLayer({ id: 'community-routes', type: 'line', source: 'community', filter: lines, minzoom: 12,
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': COMMUNITY_COLOR, 'line-width': 3, 'line-opacity': 0.75, 'line-dasharray': [2, 1.5] } }, before);
+  map.addLayer({ id: 'community-routes-hit', type: 'line', source: 'community', filter: lines, minzoom: 12,
+    paint: { 'line-color': '#000', 'line-width': 16, 'line-opacity': 0 } }, before);
+  map.addLayer({ id: 'community-terminals', type: 'circle', source: 'community', filter: ['==', ['geometry-type'], 'Point'], minzoom: 12,
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 4, 16, 7], 'circle-color': COMMUNITY_COLOR, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } }, before);
+  map.addLayer({ id: 'community-labels', type: 'symbol', source: 'community', minzoom: 15,
+    layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-offset': [0, 1], 'text-anchor': 'top', 'text-optional': true, 'symbol-placement': 'point', 'text-max-width': 9 },
+    paint: { 'text-color': '#0b4f4a', 'text-halo-color': '#fff', 'text-halo-width': 1.5 } }, before);
+}
+function communityAt(map, point) {
+  const layers = COMMUNITY_LAYERS.filter((id) => map.getLayer(id));
+  if (!layers.length) return null;
+  return map.queryRenderedFeatures([[point.x - 10, point.y - 10], [point.x + 10, point.y + 10]], { layers })[0]?.properties ?? null;
+}
+
 // A hidden map (another tab is open) has no size: don't adjust it then.
 const hasSize = (map) => {
   const el = map.getContainer();
@@ -247,7 +280,7 @@ function keepOnRoute(map, route) {
 // (id) gets a highlight ring.
 export default function MapView({
   route, jeepneys = [], pickup, dest, me, guide, waiting, onPick, onJeepTap, activeDirection, visible = true, padding, onReady,
-  landmarks, showLandmarks = true, onLandmarkTap, selectedLandmark,
+  landmarks, showLandmarks = true, onLandmarkTap, selectedLandmark, community, onCommunityTap,
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -274,6 +307,10 @@ export default function MapView({
   const onLandmarkTapRef = useRef(onLandmarkTap);
   onLandmarkTapRef.current = onLandmarkTap;
   const fitted = useRef(false);
+  const communityRef = useRef(community);
+  communityRef.current = community;
+  const onCommunityTapRef = useRef(onCommunityTap);
+  onCommunityTapRef.current = onCommunityTap;
 
   useEffect(() => {
     const map = new maplibregl.Map({
@@ -312,6 +349,7 @@ export default function MapView({
         });
       }
       if (landmarksRef.current?.length) addLandmarkLayers(map, landmarksRef.current, showLandmarksRef.current);
+      addCommunityLayers(map, communityRef.current);
       map.addSource('guide-ride', { type: 'geojson', data: EMPTY });
       map.addSource('guide-walk', { type: 'geojson', data: EMPTY });
       map.addSource('guide-trike', { type: 'geojson', data: EMPTY });
@@ -340,10 +378,12 @@ export default function MapView({
       // A tap on (or right next to) a landmark opens its card.
       const lm = landmarkAt(map, e.point);
       if (lm) { onLandmarkTapRef.current?.(lm); return; }
+      const cp = onCommunityTapRef.current ? communityAt(map, e.point) : null;
+      if (cp) { onCommunityTapRef.current(cp.id); return; }
       onPickRef.current?.([e.lngLat.lng, e.lngLat.lat]);
     });
     map.on('mousemove', (e) => {
-      map.getCanvas().style.cursor = landmarkAt(map, e.point) ? 'pointer' : '';
+      map.getCanvas().style.cursor = landmarkAt(map, e.point) || communityAt(map, e.point) ? 'pointer' : '';
     });
     // Stay on the route while panning, and re-check the zoom-out limit when
     // the map is shown, the phone is rotated or the window is resized.
@@ -432,6 +472,11 @@ export default function MapView({
   useEffect(() => {
     if (mapRef.current) applyGuide(mapRef.current, guide);
   }, [guide]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const src = mapRef.current?.getSource('community');
+    if (src) src.setData(communityData(community));
+  }, [community]);
 
   // Waiting passengers: a few markers, simply redrawn on each refresh.
   useEffect(() => {

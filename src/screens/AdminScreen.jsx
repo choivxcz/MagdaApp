@@ -7,6 +7,10 @@ import { adminListDrivers, adminReviewDriver, adminListReports, adminSetReportSt
 import { fetchTips, adminSetTipStatus, deleteTip } from '../lib/community.js';
 import { adminListSos, adminResolveSos, mapsLink } from '../lib/driverData.js';
 import { TipCard } from './CommunityScreen.jsx';
+import {
+  adminReviewQueue, adminSetPostStatus, adminContentReports, adminResolveContent, adminBanUser, adminListBanned,
+  VEHICLES, POST_KINDS, REPORT_REASONS, fareText,
+} from '../lib/communityPosts.js';
 import AdminMfa, { useAdminAssurance } from '../components/AdminMfa.jsx';
 import routeData from '../data/route-magdalena-santa-cruz.json';
 
@@ -16,7 +20,10 @@ const DRIVER_FILTERS = [
   ['other', 'Rejected'],
 ];
 const STATUS_LABEL = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', disabled: 'Turned off' };
-const REPORT_LABEL = { overpricing: 'Overpricing', harassment: 'Harassment', reckless: 'Reckless driving', other: 'Other' };
+const REPORT_LABEL = {
+  overpricing: 'Overcharging', harassment: 'Sexual harassment or abuse', reckless: 'Reckless driving', rude: 'Rude driver', other: 'Other',
+  missing_route: 'Route issue: missing route', wrong_route: 'Route issue: wrong path', route_problem: 'Route issue: other',
+};
 
 const when = (d) => (d ? new Date(d).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
 
@@ -51,8 +58,8 @@ export default function AdminScreen() {
       <PageHeader title="Admin tools" back="more" />
       <div className="page-body">
         <p className="fineprint mfa-ok"><Icon name="shield" size={14} /> 2-step verification on</p>
-        <Segmented value={tab} onChange={setTab} options={[['drivers', 'Drivers'], ['reports', 'Reports'], ['tips', 'Tips'], ['sos', 'SOS']]} />
-        {tab === 'drivers' ? <Drivers onChange={reloadMe} /> : tab === 'reports' ? <Reports /> : tab === 'tips' ? <Tips /> : <SosAlerts />}
+        <Segmented value={tab} onChange={setTab} options={[['drivers', 'Drivers'], ['reports', 'Rides'], ['community', 'Community'], ['tips', 'Tips'], ['sos', 'SOS']]} />
+        {tab === 'drivers' ? <Drivers onChange={reloadMe} /> : tab === 'reports' ? <Reports /> : tab === 'community' ? <CommunityAdmin /> : tab === 'tips' ? <Tips /> : <SosAlerts />}
       </div>
     </div>
   );
@@ -205,8 +212,9 @@ function Reports() {
             <div className="admin-card-head">
               <span className="tile warn-tile"><Icon name="report" size={20} /></span>
               <div className="admin-card-title">
-                <b>{REPORT_LABEL[r.category]}</b>
-                <span className="sub">{r.plate ? `Plate ${r.plate} · ` : ''}{when(r.created_at)}</span>
+                <b>{REPORT_LABEL[r.category] ?? r.category}</b>
+                <span className="sub">{r.plate ? `Plate ${r.plate} · ` : r.vehicle ? `Jeep: ${r.vehicle} · ` : ''}{when(r.created_at)}</span>
+                {r.context && <span className="sub">Where: {r.context}</span>}
               </div>
             </div>
             {r.details && <p className="body-text">{r.details}</p>}
@@ -218,6 +226,95 @@ function Reports() {
           </div>
         ))
       )}
+    </>
+  );
+}
+
+// Community: approve new routes and terminals, handle reported posts,
+// comments and chat messages, and ban people who break the rules.
+function CommunityAdmin() {
+  const [view, setView] = useState('review');
+  const [queue, setQueue] = useState(null);
+  const [reports, setReports] = useState(null);
+  const [banned, setBanned] = useState(null);
+  const [error, setError] = useState('');
+  const [notes, setNotes] = useState({});
+
+  const load = useCallback(async () => {
+    try {
+      const [q, r, b] = await Promise.all([adminReviewQueue(), adminContentReports(), adminListBanned()]);
+      setQueue(q); setReports(r); setBanned(b); setError('');
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const act = async (fn) => { try { await fn(); await load(); } catch (e) { setError(e.message); } };
+  const mapLink = (p) => mapsLink(p.point ?? p.path?.[0]);
+
+  return (
+    <>
+      <div className="filter-chips">
+        <button className={view === 'review' ? 'on' : ''} onClick={() => setView('review')}>To review <span>{queue?.length ?? 0}</span></button>
+        <button className={view === 'reports' ? 'on' : ''} onClick={() => setView('reports')}>Reported <span>{reports?.length ?? 0}</span></button>
+        <button className={view === 'banned' ? 'on' : ''} onClick={() => setView('banned')}>Banned <span>{banned?.length ?? 0}</span></button>
+        <button className="icon-btn small refresh" onClick={load} aria-label="Refresh"><Icon name="refresh" size={16} /></button>
+      </div>
+      {error && <p className="warn">{error}</p>}
+
+      {view === 'review' && (queue === null ? <Skeleton rows={3} /> : queue.length === 0 ? <p className="hint center">Nothing waiting for review.</p> : queue.map((p) => (
+        <div key={p.id} className="card admin-card">
+          <div className="admin-card-head">
+            <span className="tile"><Icon name={POST_KINDS[p.kind]?.icon ?? 'pin'} size={20} /></span>
+            <div className="admin-card-title">
+              <b>{p.name}</b>
+              <span className="sub">{POST_KINDS[p.kind]?.label} · {p.vehicles.map((v) => VEHICLES[v]?.label ?? v).join(', ')} · by {p.authorFull}{p.authorDriver ? ' (driver)' : ''} · {when(p.createdAt)}</span>
+            </div>
+          </div>
+          {p.body && <p className="body-text">{p.body}</p>}
+          {(fareText(p.fares) || p.hours) && <p className="sub">{[fareText(p.fares), p.hours].filter(Boolean).join(' · ')}</p>}
+          <p className="sub">{p.kind === 'local_route' ? `${p.path?.length ?? 0} points drawn · ` : ''}<a href={mapLink(p)} target="_blank" rel="noreferrer">Open the spot in Google Maps</a></p>
+          <input className="admin-note" placeholder="Note to the person (shown if not approved)" value={notes[p.id] ?? ''} onChange={(e) => setNotes({ ...notes, [p.id]: e.target.value })} maxLength={200} />
+          <div className="admin-actions">
+            <button className="btn primary" onClick={() => act(() => adminSetPostStatus(p.id, 'approved'))}>Approve</button>
+            <button className="btn" onClick={() => act(() => adminSetPostStatus(p.id, 'rejected', notes[p.id]))}>Not approved</button>
+          </div>
+        </div>
+      )))}
+
+      {view === 'reports' && (reports === null ? <Skeleton rows={3} /> : reports.length === 0 ? <p className="hint center">No reported content.</p> : reports.map((r) => (
+        <div key={`${r.kind}:${r.id}`} className="card admin-card">
+          <div className="admin-card-head">
+            <span className="tile warn-tile"><Icon name="flag" size={20} /></span>
+            <div className="admin-card-title">
+              <b>{{ post: 'Post', tip: 'Tip', comment: 'Comment', chat: 'Chat message' }[r.kind]} · {r.count} report{r.count === 1 ? '' : 's'}{r.status === 'hidden' ? ' · hidden now' : ''}</b>
+              <span className="sub">By {r.author}{r.authorBanned ? ' (banned)' : ''} · {r.reasons.map((x) => REPORT_REASONS[x] ?? x).join(', ')} · {when(r.lastAt)}</span>
+            </div>
+          </div>
+          <p className="body-text">{r.snippet ?? '(already deleted)'}</p>
+          {r.notes.length > 0 && <p className="sub">Notes: {r.notes.join(' · ')}</p>}
+          <div className="admin-actions">
+            <button className="btn" onClick={() => act(() => adminResolveContent(r.kind, r.id, 'dismiss'))}>It’s fine</button>
+            <button className="btn" onClick={() => act(() => adminResolveContent(r.kind, r.id, 'hide'))}>Hide</button>
+            <button className="btn danger" onClick={() => window.confirm('Delete it for good?') && act(() => adminResolveContent(r.kind, r.id, 'delete'))}>Delete</button>
+            {r.authorId && !r.authorBanned && (
+              <button className="btn danger" onClick={() => window.confirm(`Ban ${r.author}? They can no longer post, comment or chat, and everything they posted is hidden.`) && act(() => adminBanUser(r.authorId, true))}>Ban person</button>
+            )}
+          </div>
+        </div>
+      )))}
+
+      {view === 'banned' && (banned === null ? <Skeleton rows={2} /> : banned.length === 0 ? <p className="hint center">No one is banned.</p> : (
+        <div className="menu-card">
+          {banned.map((b) => (
+            <div key={b.id} className="menu-row">
+              <span className="menu-text"><span className="menu-title">{b.name}</span><span className="menu-sub">Banned {when(b.since)}</span></span>
+              <button className="btn small" onClick={() => act(() => adminBanUser(b.id, false))}>Unban</button>
+            </div>
+          ))}
+        </div>
+      ))}
     </>
   );
 }

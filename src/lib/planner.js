@@ -66,6 +66,9 @@ function reach(straight, P) {
   return null;
 }
 
+// Nobody gets on or off on a bridge (stretches from `npm run places`).
+export const onBridge = (leg, along, padM = 15) => (leg.noStop ?? []).some(([a, b]) => along >= a - padM && along <= b + padM);
+
 // Spots on a leg where the rider could get on (or off), with how they get there.
 function candidates(leg, place, P) {
   if (place.stopId) {
@@ -77,8 +80,9 @@ function candidates(leg, place, P) {
   if (near.offRoute > maxStraight) return [];
   // A spot much farther than the nearest one can't be a better choice.
   const radius = Math.min(maxStraight, near.offRoute * 1.6 + 400);
-  const list = [{ along: near.along, point: near.point, straight: near.offRoute }];
+  const list = onBridge(leg, near.along) ? [] : [{ along: near.along, point: near.point, straight: near.offRoute }];
   for (let along = 0; along <= leg.length; along += P.sampleM) {
+    if (onBridge(leg, along)) continue;
     const point = pointAlong(leg, along);
     const straight = distanceMeters(place.point, point);
     if (straight <= radius) list.push({ along, point, straight });
@@ -350,6 +354,63 @@ export function withMeasuredSteps(option, measured, P = PLAN) {
     const minutes = s.type === 'walk' ? m / P.walkMps / 60 : m / P.trikeMps / 60 + P.trikeWaitMin;
     return { ...s, meters: m, minutes };
   });
+  return changed ? { ...buildOption(steps), id: option.id, tags: option.tags } : option;
+}
+
+// The planner picks where to get on and off from straight-line distances.
+// Real roads can go around: a tricycle may reach the jeepney route far
+// before the planned sakayan and then drive ALONG the route to it, or the
+// walk from the babaan may follow the route before turning off. Once the
+// real path is known, get on where the path first reaches the route, and
+// get off where it finally leaves it. pathFor(step) returns { coords } or null.
+const SNAP_M = 20; // a path point this close to the jeepney's line is "on the route"
+const MOVE_MIN_M = 80; // smaller differences aren't worth changing the plan
+
+const pathLength = (coords) => coords.reduce((m, c, i) => (i ? m + distanceMeters(coords[i - 1], c) : 0), 0);
+const accessMinutes = (type, meters, P) => (type === 'walk' ? meters / P.walkMps / 60 : meters / P.trikeMps / 60 + P.trikeWaitMin);
+const netOf = (ride) => ({ key: ride.key, routeId: ride.routeId, routeName: ride.routeName, direction: ride.direction, leg: ride.leg });
+
+export function alignWithPaths(option, pathFor, P = PLAN) {
+  if (!option) return option;
+  const steps = [...option.steps];
+  let changed = false;
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    if (s.type !== 'walk' && s.type !== 'tricycle') continue;
+    const coords = pathFor(s)?.coords;
+    if (!coords || coords.length < 2) continue;
+
+    // Getting on: the first point of the path that is on the route.
+    if (s.role === 'first' && steps[i + 1]?.type === 'ride') {
+      const ride = steps[i + 1];
+      const at = coords.findIndex((c, k) => k > 0 && projectOnRoute(ride.leg, c).offRoute <= SNAP_M);
+      if (at < 0) continue;
+      const snap = projectOnRoute(ride.leg, coords[at]);
+      if (Math.abs(snap.along - ride.fromAlong) < MOVE_MIN_M || ride.toAlong - snap.along < P.minRideM || onBridge(ride.leg, snap.along)) continue;
+      const part = [...coords.slice(0, at), snap.point];
+      const meters = pathLength(part);
+      steps[i] = { ...s, to: snap.point, coords: part, meters, minutes: accessMinutes(s.type, meters, P) };
+      steps[i + 1] = rideStep(netOf(ride), snap.along, ride.toAlong, P);
+      changed = true;
+    }
+
+    // Getting off: the last point of the path that is still on the route.
+    if (s.role === 'last' && steps[i - 1]?.type === 'ride') {
+      const ride = steps[i - 1];
+      let at = -1;
+      for (let k = coords.length - 2; k >= 0; k--) {
+        if (projectOnRoute(ride.leg, coords[k]).offRoute <= SNAP_M) { at = k; break; }
+      }
+      if (at <= 0) continue;
+      const snap = projectOnRoute(ride.leg, coords[at]);
+      if (Math.abs(snap.along - ride.toAlong) < MOVE_MIN_M || snap.along - ride.fromAlong < P.minRideM || onBridge(ride.leg, snap.along)) continue;
+      const part = [snap.point, ...coords.slice(at + 1)];
+      const meters = pathLength(part);
+      steps[i - 1] = rideStep(netOf(ride), ride.fromAlong, snap.along, P);
+      steps[i] = { ...s, from: snap.point, coords: part, meters, minutes: accessMinutes(s.type, meters, P) };
+      changed = true;
+    }
+  }
   return changed ? { ...buildOption(steps), id: option.id, tags: option.tags } : option;
 }
 

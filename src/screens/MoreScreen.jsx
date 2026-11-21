@@ -13,6 +13,8 @@ import { PageSkeleton } from '../components/ui.jsx';
 import { isDataSaver } from '../lib/prefs.js';
 import { useDataUsed, fmtBytes, resetDataUsed } from '../lib/dataMeter.js';
 import { phoneWantsSavings } from '../lib/prefs.js';
+import { BROWSE, DEFAULT_SHORTCUTS } from '../lib/placeIndex.js';
+import { listBlocked, unblockUser } from '../lib/communityPosts.js';
 
 // Pages only some people open are downloaded when first opened.
 const DriverApplyScreen = lazy(() => import('./DriverApplyScreen.jsx'));
@@ -26,6 +28,8 @@ export default function MoreScreen({ route, sub }) {
     case 'preferences': return <Preferences />;
     case 'fares': return <FareGuide route={route} />;
     case 'report': return <ReportRide />;
+    case 'route-issue': return <RouteIssue />;
+    case 'guidelines': return <Guidelines />;
     case 'account': return <Account />;
     case 'about': return <About />;
     case 'privacy': return <Privacy />;
@@ -79,7 +83,7 @@ function MoreMenu() {
 
         {isAdmin && (
           <MenuGroup title="Admin">
-            <MenuRow icon="key" title="Admin tools" sub="Drivers, ride reports, tips, SOS alerts" onClick={() => navigate('more/admin')} />
+            <MenuRow icon="key" title="Admin tools" sub="Drivers, reports, Community review, SOS alerts" onClick={() => navigate('more/admin')} />
           </MenuGroup>
         )}
 
@@ -115,9 +119,14 @@ function MoreMenu() {
 
         <MenuGroup title="Commute tools">
           <MenuRow icon="fare" title="Fare guide & calculator" sub="Fares between every stop" onClick={() => navigate('more/fares')} />
-          <MenuRow icon="chat" title="Community tips" sub="Route changes, where to wait, fares: from local commuters" onClick={() => navigate('routes/community')} />
-          <MenuRow icon="report" title="Report a ride" sub="Overpricing, harassment, reckless driving" onClick={() => navigate('more/report')} />
+          <MenuRow icon="chat" title="Community" sub="Tricycle routes, terminals, tips and chat from commuters" onClick={() => navigate('community')} />
+          <MenuRow icon="report" title="Report a ride" sub="Overcharging, harassment, reckless or rude driver" onClick={() => navigate('more/report')} />
           <MenuRow icon="phone" title="Emergency hotline" sub="Call 911 for police, fire or medical help" href="tel:911" />
+        </MenuGroup>
+
+        <MenuGroup title="Support">
+          <MenuRow icon="routes" title="Report route issue" sub="Missing route, wrong path, or a problem with the map" onClick={() => navigate('more/route-issue')} />
+          <MenuRow icon="shield" title="Community guidelines" sub="Rules for posts, comments and chat" onClick={() => navigate('more/guidelines')} />
         </MenuGroup>
 
         <MenuGroup title="App">
@@ -170,6 +179,8 @@ function Preferences() {
             options={[['system', 'Auto'], ['light', 'Light'], ['dark', 'Dark']]} /></div>
         </MenuGroup>
         <DataSettings />
+        <ShortcutSettings />
+        <CommunitySettings />
         <MenuGroup title="Feel">
           <MenuRow icon="sparkle" title="Vibrate on taps" sub="A small buzz when you choose, save or start a trip (Android)"
             right={<input type="checkbox" className="switch" checked={prefs.haptics !== false} onChange={(e) => setPrefs({ haptics: e.target.checked })} aria-label="Vibrate on taps" />} />
@@ -208,6 +219,56 @@ function DataSettings() {
           About how much this app’s live updates, searches and directions used on this phone. Map pictures download once and are
           then kept on your phone{on ? '' : ''}. Updates pause when the app is in the background. Data saver is {on ? 'on' : 'off'}.
         </p>
+      </div>
+    </MenuGroup>
+  );
+}
+
+// Which "kind" buttons show on the map, next to your saved places (up to 6).
+function ShortcutSettings() {
+  const prefs = usePrefs();
+  const chosen = prefs.shortcuts ?? DEFAULT_SHORTCUTS;
+  const toggle = (k) => setPrefs({ shortcuts: chosen.includes(k) ? chosen.filter((x) => x !== k) : chosen.length >= 6 ? chosen : [...chosen, k] });
+  return (
+    <MenuGroup title="Map shortcuts">
+      <div className="inset">
+        <p className="fineprint">Buttons under the search box on the map. Your saved places (Home, School…) always come first.</p>
+        <div className="chip-wrap">
+          {Object.entries(BROWSE).map(([k, b]) => (
+            <button key={k} type="button" className={`chip small ${chosen.includes(k) ? 'on' : ''}`} aria-pressed={chosen.includes(k)} onClick={() => toggle(k)}>
+              <Icon name={b.icon} size={14} /> {b.short ?? b.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </MenuGroup>
+  );
+}
+
+function CommunitySettings() {
+  const prefs = usePrefs();
+  const { user } = useAuth();
+  const [blocked, setBlocked] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    if (user && !isDemo) listBlocked().then(setBlocked).catch((e) => setErr(e.message));
+  }, [user]);
+  if (!user) return null;
+  return (
+    <MenuGroup title="Community">
+      <MenuRow icon="user" title="Anonymous in Community chat" sub="Show “Anonymous commuter” instead of your name on new chat messages"
+        right={<input type="checkbox" className="switch" checked={!!prefs.chatAnonymous} onChange={(e) => setPrefs({ chatAnonymous: e.target.checked })} aria-label="Anonymous in Community chat" />} />
+      <div className="inset">
+        <b className="small-title">Blocked people</b>
+        <p className="fineprint">You and the people you block can’t see each other’s posts, comments or chat messages.</p>
+        {err && <p className="warn small">{err}</p>}
+        {blocked?.length === 0 && <p className="sub">No one.</p>}
+        {blocked?.map((b) => (
+          <div key={b.id} className="row-between">
+            <span>{b.name}</span>
+            <button type="button" className="link-btn small" onClick={async () => { await unblockUser(b.id); setBlocked(blocked.filter((x) => x.id !== b.id)); }}>Unblock</button>
+          </div>
+        ))}
       </div>
     </MenuGroup>
   );
@@ -257,6 +318,7 @@ function FareGuide({ route }) {
           ) : (
             <p className="warn">“To” must come after “From” in this direction.</p>
           )}
+          {valid && <button type="button" className="link-btn small align-start" onClick={() => navigate('more/report')}>Charged more than this? Report it</button>}
         </div>
 
         <h3>All fares from {leg.stops[0].name}</h3>
@@ -284,15 +346,24 @@ function FareGuide({ route }) {
 }
 
 const CATEGORIES = [
-  ['overpricing', 'Overpricing', 'Charged more than the fare'],
-  ['harassment', 'Harassment', 'Rude, unsafe or inappropriate behavior'],
+  ['overpricing', 'Overcharging', 'Charged more than the fare'],
+  ['harassment', 'Sexual harassment or abuse', 'Unwanted touching, comments, threats'],
   ['reckless', 'Reckless driving', 'Speeding, overloading, unsafe stops'],
+  ['rude', 'Rude driver', 'Shouting, refusing passengers, no change'],
   ['other', 'Something else', ''],
 ];
+const ROUTE_ISSUES = [
+  ['missing_route', 'Missing route', 'A jeepney or tricycle route that isn’t in the app'],
+  ['wrong_route', 'Wrong path', 'The line on the map isn’t where the jeepney goes'],
+  ['route_problem', 'Other problem', 'Wrong stop, place, fare or anything else'],
+];
+const ALL_REPORTS = [...CATEGORIES, ...ROUTE_ISSUES];
 
 function ReportRide() {
   const { user } = useAuth();
   const [plate, setPlate] = useState('');
+  const [noPlate, setNoPlate] = useState(false);
+  const [vehicle, setVehicle] = useState('');
   const [category, setCategory] = useState('overpricing');
   const [details, setDetails] = useState('');
   const [busy, setBusy] = useState(false);
@@ -305,12 +376,15 @@ function ReportRide() {
 
   async function submit(e) {
     e.preventDefault();
+    if (!noPlate && !plate.trim()) return setMsg('Enter the plate number, or tick “I didn’t see the plate”.');
+    if (noPlate && vehicle.trim().length < 3) return setMsg('Describe the jeep, like its body number or colors.');
     setBusy(true);
     setMsg('');
     try {
-      await fileReport({ plate: plate.trim().toUpperCase(), category, details: details.trim() });
-      setMsg('Thank you. Your report was sent.');
+      await fileReport({ plate: noPlate ? '' : plate.trim().toUpperCase(), vehicle: noPlate ? vehicle.trim() : '', category, details: details.trim() });
+      setMsg('Thank you. Your report was sent. The admin will look at it.');
       setPlate('');
+      setVehicle('');
       setDetails('');
       setMine(await listMyReports());
     } catch (err) {
@@ -332,8 +406,17 @@ function ReportRide() {
           </div>
         ) : (
           <form className="card form" onSubmit={submit}>
-            <label className="field"><span className="label">Plate number (if you saw it)</span>
-              <input value={plate} onChange={(e) => setPlate(e.target.value)} maxLength={20} placeholder="e.g. MAG 101" />
+            {!noPlate ? (
+              <label className="field"><span className="label">Plate number</span>
+                <input value={plate} onChange={(e) => setPlate(e.target.value)} maxLength={20} placeholder="e.g. MAG 101" />
+              </label>
+            ) : (
+              <label className="field"><span className="label">Jeep body number or description</span>
+                <input value={vehicle} onChange={(e) => setVehicle(e.target.value.slice(0, 80))} maxLength={80} placeholder="e.g. No. 12, blue with “Lord’s Gift”" />
+              </label>
+            )}
+            <label className="switch-label"><span>I didn’t see the plate</span>
+              <input type="checkbox" className="switch" checked={noPlate} onChange={(e) => setNoPlate(e.target.checked)} />
             </label>
             <span className="label">What happened?</span>
             <div className="choice-list">
@@ -344,9 +427,15 @@ function ReportRide() {
                 </button>
               ))}
             </div>
+            {category === 'harassment' && (
+              <div className="harass-help">
+                <p>If you are in danger now, call for help first.</p>
+                <a className="btn danger small" href="tel:911"><Icon name="phone" size={15} /> Call 911</a>
+              </div>
+            )}
             <label className="field"><span className="label">Details</span>
               <textarea value={details} onChange={(e) => setDetails(e.target.value)} maxLength={1000} rows={4}
-                placeholder="When and where did it happen? What did you see?" />
+                placeholder="When and where did it happen? What did you see? (You can also send photos to the admin later.)" />
             </label>
             <button className="btn primary wide" disabled={busy}>{busy ? 'Sending…' : 'Send report'}</button>
             {msg && <p className={msg.startsWith('Thank') ? 'ok' : 'warn'}>{msg}</p>}
@@ -360,8 +449,8 @@ function ReportRide() {
                 <li key={r.id}>
                   <span className={`status-pill ${r.status}`}>{r.status === 'open' ? 'Sent' : 'Resolved'}</span>
                   <span>
-                    <b>{CATEGORIES.find((c) => c[0] === r.category)?.[1]}</b>
-                    <span className="sub">{r.plate ? `${r.plate} · ` : ''}{new Date(r.created_at).toLocaleDateString()}</span>
+                    <b>{ALL_REPORTS.find((c) => c[0] === r.category)?.[1] ?? r.category}</b>
+                    <span className="sub">{r.plate ? `${r.plate} · ` : r.vehicle ? `${r.vehicle} · ` : ''}{new Date(r.created_at).toLocaleDateString()}</span>
                   </span>
                   <span />
                 </li>
@@ -369,6 +458,93 @@ function ReportRide() {
             </ul>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Missing route, wrong path, or another map problem.
+function RouteIssue() {
+  const { user } = useAuth();
+  const [category, setCategory] = useState('missing_route');
+  const [where, setWhere] = useState('');
+  const [details, setDetails] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  async function submit(e) {
+    e.preventDefault();
+    if (details.trim().length < 5) return setMsg('Tell us a little more.');
+    setBusy(true);
+    setMsg('');
+    try {
+      await fileReport({ category, context: where.trim().slice(0, 300), details: details.trim() });
+      setMsg('Thank you! We’ll check it. You can also add tricycle routes and terminals yourself in Community.');
+      setWhere('');
+      setDetails('');
+    } catch (err) {
+      setMsg(`Could not send: ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="page">
+      <PageHeader title="Report route issue" back="more" />
+      <div className="page-body">
+        <p className="body-text muted">Found something wrong on the map? Tell us. Know a tricycle or e-trike route? <button type="button" className="link-btn small" onClick={() => navigate('community')}>Add it in Community</button></p>
+        {!user ? (
+          <div className="card">
+            <p className="body-text">Sign in to send a report.</p>
+            {!isDemo && <button className="btn primary" onClick={() => setPrefs({ guest: false })}>Sign in</button>}
+          </div>
+        ) : (
+          <form className="card form" onSubmit={submit}>
+            <div className="choice-list">
+              {ROUTE_ISSUES.map(([id, title, sub]) => (
+                <button type="button" key={id} className={`choice ${category === id ? 'on' : ''}`} onClick={() => setCategory(id)}>
+                  <span className="radio" /><span><b>{title}</b><small>{sub}</small></span>
+                </button>
+              ))}
+            </div>
+            <label className="field"><span className="label">Where? (street, barangay or stop)</span>
+              <input value={where} onChange={(e) => setWhere(e.target.value)} maxLength={300} placeholder="e.g. Rizal St corner Burgos, Poblacion" />
+            </label>
+            <label className="field"><span className="label">What’s wrong?</span>
+              <textarea value={details} onChange={(e) => setDetails(e.target.value)} maxLength={1000} rows={4}
+                placeholder="e.g. Jeepneys to Sta. Cruz now pass Manas Street, not Zulueta." />
+            </label>
+            <button className="btn primary wide" disabled={busy}>{busy ? 'Sending…' : 'Send'}</button>
+            {msg && <p className={msg.startsWith('Thank') ? 'ok' : 'warn'}>{msg}</p>}
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Guidelines() {
+  return (
+    <div className="page">
+      <PageHeader title="Community guidelines" back="more" />
+      <div className="page-body prose">
+        <p>Community is for real, useful commute information around Magdalena, Pagsanjan and Santa Cruz. Be kind and helpful.</p>
+        <ul>
+          <li><b>Share what’s true.</b> Routes, terminals, fares and tips you know from riding. Say when you’re not sure.</li>
+          <li><b>No harassment or hate.</b> No insults, threats, or attacks on anyone, including drivers.</li>
+          <li><b>No personal information.</b> Don’t post names, phone numbers, addresses, faces or plate numbers. To complain about a ride, use More → Report a ride: it goes to the admin, not the public.</li>
+          <li><b>No selling, ads or spam.</b></li>
+          <li><b>No sexual or violent content.</b></li>
+        </ul>
+        <h3>How we keep it safe</h3>
+        <ul>
+          <li>New routes and terminals are checked by an admin before everyone sees them.</li>
+          <li>Tap ••• on any post, comment or chat message to report it or block the person. When 3 people report the same thing, it is hidden right away until the admin reviews it.</li>
+          <li>People who break the rules can be banned; all their posts, comments and messages are then hidden.</li>
+          <li>Chat messages disappear after 1 hour.</li>
+        </ul>
+        <p className="fineprint">In an emergency, call 911.</p>
       </div>
     </div>
   );
@@ -484,7 +660,7 @@ function Privacy() {
           <li><b>Account:</b> your email, name and fare type, so you can sign in and keep settings.</li>
           <li><b>Photos (optional):</b> your profile picture, and for drivers a photo of the jeepney. A commuter’s photo isn’t shown to anyone in the app, but like all photos it is stored at a hard-to-guess web link. For approved drivers, riders who tap the jeepney on the map see the driver’s name, profile picture and jeepney photo.</li>
           <li><b>Saved places and trips:</b> the places (like Home or School) and trips you saved. Only you can see them.</li>
-          <li><b>Community tips (optional):</b> tips you share are public, shown with your first name only. If you attach your spot, it is rounded to about 10 m and shown with the tip. You can delete your tips at any time.</li>
+          <li><b>Community (optional):</b> tips, tricycle routes, terminals, comments, votes and chat messages you share. Others see only your first name (or “Anonymous commuter” if you choose it), never your email or photo. If you attach your spot to a tip, it is rounded to about 10 m. Chat messages show for 1 hour and are deleted after a day. You can delete what you posted at any time. Reports you send about posts are seen only by the admin, and the person you report isn’t told who reported them.</li>
           <li><b>“I’m waiting here” (optional):</b> the spot where you wait, your direction and how many you are. On-duty drivers see it without your name. It ends after 20 minutes or when you cancel, and is deleted soon after.</li>
           <li><b>Ride reports:</b> what you report, linked to your account so we can follow up.</li>
           <li><b>Drivers only:</b> the jeepney’s location and passenger count during a trip. Only the latest position is kept; it is hidden when the trip ends. Phone, license and franchise numbers are seen only by the admin.</li>
@@ -495,19 +671,22 @@ function Privacy() {
         <h3>What we don’t do</h3>
         <ul>
           <li>We don’t track or store riders’ locations. When you plan a trip, your start and destination are sent to free OpenStreetMap services to draw walking and tricycle paths (routing.openstreetmap.de, router.project-osrm.org, valhalla1.openstreetmap.de) and to name a spot you tapped (photon.komoot.io). They are not saved by us.</li>
-          <li>What you type in the place search is sent to the free OpenStreetMap search service Photon (photon.komoot.io).</li>
+          <li>Place search first looks in the list of streets, barangays and places stored in the app (nothing is sent). Only when it finds little is what you typed sent to the free OpenStreetMap search service Photon (photon.komoot.io).</li>
+          <li>The weather on the map comes from Open-Meteo (api.open-meteo.com); only the route’s area (not your location) is sent. It is off with Data saver.</li>
           <li>Questions you type in <b>Ask AI</b> go to Google Gemini to be answered. If your map shows a trip, its start and destination go to our own server to plan routes, but are not sent to Gemini. Don’t type personal details in the chat.</li>
           <li>We don’t sell your data or show ads.</li>
         </ul>
         <h3>Deleting your data</h3>
-        <p>More → Account & data → Delete account removes your account, profile, photos, saved places and trips, and your community tips. You can also remove a photo there at any time.</p>
+        <p>More → Account & data → Delete account removes your account, profile, photos, saved places and trips, community tips, comments, chat messages, votes, and routes or terminals still waiting for review. Approved routes and terminals stay in the app without your name, so other commuters can still use them. You can also remove a photo there at any time.</p>
         <h3>Data sources</h3>
         <ul>
           <li>Map data © OpenStreetMap contributors, map tiles by OpenFreeMap.</li>
           <li>Fares estimated from the LTFRB jeepney fare matrix.</li>
           <li>Route traced from the project team’s description of the actual jeepney route.</li>
           <li>Place search by Photon (komoot), using OpenStreetMap data.</li>
-          <li>Landmarks on the map © OpenStreetMap contributors.</li>
+          <li>Landmarks, streets, barangays and places © OpenStreetMap contributors.</li>
+          <li>Tricycle routes and terminals in Community are added by commuters and checked by the admin.</li>
+          <li>Weather by Open-Meteo.com.</li>
           <li>Tricycle fares are rough estimates; each town sets its own.</li>
         </ul>
         <p className="fineprint">Services used: Supabase (accounts, database and photo storage), FOSSGIS OpenStreetMap routing and OSRM (walking and road directions), Photon by komoot (place search), Google Gemini (Ask AI), Vercel (website).</p>

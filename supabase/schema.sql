@@ -1053,3 +1053,830 @@ as $$
      and coalesce((select auth.jwt()) ->> 'aal', 'aal1') = 'aal2';
 $$;
 grant execute on function public.is_admin() to authenticated;
+
+
+-- =====================================================================
+-- 15. Community (like DavaoGo): commuters add tricycle / e-trike routes
+--     and terminals that aren't on the map, vote and confirm them
+--     ("I've ridden this"), comment, and chat. An admin approves new
+--     routes and terminals before everyone sees them.
+--
+--     Safety: readers see only a first name (or "Anonymous commuter"),
+--     never account ids. Anyone can report a post, comment or chat
+--     message; after 3 reports it hides until an admin looks at it.
+--     People can block each other, and admins can ban spammers (all their
+--     content disappears). Chat messages show for 1 hour and are deleted
+--     after a day.
+-- =====================================================================
+
+alter table public.profiles add column if not exists banned_at timestamptz;
+
+create table if not exists public.community_posts (
+  id           uuid primary key default gen_random_uuid(),
+  -- Approved routes stay when the account is deleted (without the name),
+  -- so other commuters can still use them.
+  user_id      uuid default auth.uid() references auth.users (id) on delete set null,
+  route_id     text not null check (char_length(route_id) <= 60),
+  kind         text not null check (kind in ('terminal', 'local_route')),
+  name         text not null check (char_length(name) between 3 and 80),
+  note         text check (char_length(note) <= 500),
+  vehicles     text[] not null check (cardinality(vehicles) between 1 and 4
+                 and vehicles <@ array['tricycle', 'etrike', 'pedicab', 'jeepney', 'van', 'bus', 'habal']::text[]),
+  fare_default numeric(6, 2) check (fare_default between 0 and 999),
+  fare_solo    numeric(6, 2) check (fare_solo between 0 and 999),
+  fare_shared  numeric(6, 2) check (fare_shared between 0 and 999),
+  hours        text check (char_length(hours) <= 80),
+  lat          double precision not null check (lat between -90 and 90),
+  lng          double precision not null check (lng between -180 and 180),
+  path         jsonb check (path is null or (jsonb_typeof(path) = 'array' and jsonb_array_length(path) between 2 and 400)),
+  status       text not null default 'review' check (status in ('review', 'approved', 'rejected', 'hidden')),
+  review_note  text check (char_length(review_note) <= 200),
+  anonymous    boolean not null default false,
+  up           int not null default 0,
+  down         int not null default 0,
+  confirms     int not null default 0,
+  comments     int not null default 0,
+  reports      int not null default 0,
+  created_at   timestamptz not null default now(),
+  reviewed_at  timestamptz
+);
+create index if not exists community_posts_feed_idx on public.community_posts (route_id, status, created_at desc);
+create index if not exists community_posts_user_idx on public.community_posts (user_id, created_at desc);
+
+create table if not exists public.post_votes (
+  post_id    uuid not null references public.community_posts (id) on delete cascade,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  value      smallint not null check (value in (-1, 1)),
+  created_at timestamptz not null default now(),
+  primary key (post_id, user_id)
+);
+
+create table if not exists public.post_confirms (
+  post_id    uuid not null references public.community_posts (id) on delete cascade,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (post_id, user_id)
+);
+
+-- Comments on a post or on a tip.
+create table if not exists public.community_comments (
+  id          uuid primary key default gen_random_uuid(),
+  target_kind text not null check (target_kind in ('post', 'tip')),
+  target_id   uuid not null,
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  body        text not null check (char_length(body) between 1 and 500),
+  status      text not null default 'visible' check (status in ('visible', 'hidden')),
+  reports     int not null default 0,
+  created_at  timestamptz not null default now()
+);
+create index if not exists community_comments_target_idx on public.community_comments (target_kind, target_id, created_at);
+create index if not exists community_comments_user_idx on public.community_comments (user_id, created_at desc);
+
+create table if not exists public.chat_messages (
+  id         bigint generated always as identity primary key,
+  route_id   text not null check (char_length(route_id) <= 60),
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  body       text not null check (char_length(body) between 1 and 300),
+  anonymous  boolean not null default false,
+  status     text not null default 'visible' check (status in ('visible', 'hidden')),
+  reports    int not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists chat_messages_route_idx on public.chat_messages (route_id, id);
+create index if not exists chat_messages_time_idx on public.chat_messages (created_at);
+create index if not exists chat_messages_user_idx on public.chat_messages (user_id, created_at desc);
+
+create table if not exists public.content_reports (
+  id          uuid primary key default gen_random_uuid(),
+  target_kind text not null check (target_kind in ('post', 'tip', 'comment', 'chat')),
+  target_id   text not null check (char_length(target_id) <= 40),
+  reporter    uuid default auth.uid() references auth.users (id) on delete set null,
+  reason      text not null check (reason in ('spam', 'harassment', 'false_info', 'inappropriate', 'other')),
+  note        text check (char_length(note) <= 300),
+  status      text not null default 'open' check (status in ('open', 'dismissed', 'actioned')),
+  created_at  timestamptz not null default now(),
+  unique (target_kind, target_id, reporter)
+);
+create index if not exists content_reports_open_idx on public.content_reports (status, created_at desc);
+
+create table if not exists public.user_blocks (
+  blocker    uuid not null references auth.users (id) on delete cascade,
+  blocked    uuid not null references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker, blocked),
+  check (blocker <> blocked)
+);
+
+-- No direct table access: everything goes through the functions below.
+alter table public.community_posts enable row level security;
+alter table public.post_votes enable row level security;
+alter table public.post_confirms enable row level security;
+alter table public.community_comments enable row level security;
+alter table public.chat_messages enable row level security;
+alter table public.content_reports enable row level security;
+alter table public.user_blocks enable row level security;
+revoke all on public.community_posts, public.post_votes, public.post_confirms, public.community_comments,
+  public.chat_messages, public.content_reports, public.user_blocks from anon, authenticated;
+
+-- ----- helpers -----
+
+-- What readers see as the name: first name only, or "Anonymous commuter".
+create or replace function public.public_name(p_user_id uuid, p_anonymous boolean default false)
+returns text
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select case when p_anonymous or p_user_id is null then 'Anonymous commuter'
+              else coalesce((select nullif(split_part(trim(p.full_name), ' ', 1), '') from public.profiles p where p.id = p_user_id), 'Commuter') end;
+$$;
+revoke all on function public.public_name(uuid, boolean) from public, anon, authenticated;
+
+-- True when the signed-in user may see this author's content: not banned,
+-- and neither has blocked the other.
+create or replace function public.can_see_author(p_author uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select p_author is null or (
+    not exists (select 1 from public.profiles p where p.id = p_author and p.banned_at is not null)
+    and ((select auth.uid()) is null or not exists (
+      select 1 from public.user_blocks b
+       where (b.blocker = (select auth.uid()) and b.blocked = p_author)
+          or (b.blocker = p_author and b.blocked = (select auth.uid()))))
+  );
+$$;
+revoke all on function public.can_see_author(uuid) from public, anon, authenticated;
+
+create or replace function public.is_driver_account(p_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (select 1 from public.drivers d where d.user_id = p_user_id and d.approved);
+$$;
+revoke all on function public.is_driver_account(uuid) from public, anon, authenticated;
+
+-- Signed in, not banned. Raises a plain-words error otherwise.
+create or replace function public.require_member()
+returns uuid
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is null then raise exception 'Sign in first.'; end if;
+  if exists (select 1 from public.profiles p where p.id = auth.uid() and p.banned_at is not null) then
+    raise exception 'Your account can no longer post in Community. Contact the admin if you think this is a mistake.';
+  end if;
+  return auth.uid();
+end;
+$$;
+revoke all on function public.require_member() from public, anon, authenticated;
+
+-- Who wrote a post, tip, comment or chat message (never sent to the app).
+create or replace function public.content_author(p_kind text, p_id text)
+returns uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select case p_kind
+    when 'post' then (select user_id from public.community_posts where id::text = p_id)
+    when 'tip' then (select user_id from public.community_tips where id::text = p_id)
+    when 'comment' then (select user_id from public.community_comments where id::text = p_id)
+    when 'chat' then (select user_id from public.chat_messages where id::text = p_id)
+  end;
+$$;
+revoke all on function public.content_author(text, text) from public, anon, authenticated;
+
+-- ----- the feed: routes, terminals and tips together -----
+
+create or replace function public.community_feed(p_route_id text)
+returns table (
+  kind text, id uuid, category text, name text, body text, vehicles text[],
+  fare_default numeric, fare_solo numeric, fare_shared numeric, hours text,
+  lat double precision, lng double precision, path jsonb, stop_id text,
+  status text, review_note text, up int, down int, confirms int, comments int,
+  author text, author_driver boolean, mine boolean, my_vote int, my_confirm boolean, created_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  (select p.kind, p.id, null::text, p.name, p.note, p.vehicles, p.fare_default, p.fare_solo, p.fare_shared, p.hours,
+          p.lat, p.lng, p.path, null::text, p.status,
+          case when p.user_id = (select auth.uid()) then p.review_note end,
+          p.up, p.down, p.confirms, p.comments,
+          public.public_name(p.user_id, p.anonymous), not p.anonymous and public.is_driver_account(p.user_id),
+          coalesce(p.user_id = (select auth.uid()), false),
+          coalesce((select v.value::int from public.post_votes v where v.post_id = p.id and v.user_id = (select auth.uid())), 0),
+          exists (select 1 from public.post_confirms c where c.post_id = p.id and c.user_id = (select auth.uid())),
+          p.created_at
+     from public.community_posts p
+    where p.route_id = p_route_id
+      and (p.status = 'approved' or (p.user_id = (select auth.uid()) and p.status in ('review', 'rejected')))
+      and public.can_see_author(p.user_id)
+    order by p.created_at desc
+    limit 200)
+  union all
+  (select 'tip', t.id, t.category, null, t.body, null, null, null, null, null,
+          t.lat, t.lng, null, t.stop_id, t.status, null,
+          t.helpful, 0, 0, (select count(*)::int from public.community_comments c where c.target_kind = 'tip' and c.target_id = t.id and c.status = 'visible'),
+          public.public_name(t.user_id), public.is_driver_account(t.user_id),
+          coalesce(t.user_id = (select auth.uid()), false),
+          case when exists (select 1 from public.tip_votes v where v.tip_id = t.id and v.user_id = (select auth.uid())) then 1 else 0 end,
+          false, t.created_at
+     from public.community_tips t
+    where t.route_id = p_route_id and t.status = 'visible' and public.can_see_author(t.user_id)
+    order by t.created_at desc
+    limit 200);
+$$;
+revoke all on function public.community_feed(text) from public;
+grant execute on function public.community_feed(text) to anon, authenticated;
+
+-- Tips everywhere else in the app (map, AI) also skip banned and blocked people.
+create or replace function public.list_tips(p_route_id text, p_include_hidden boolean default false)
+returns table (
+  id uuid, category text, body text, stop_id text, lat double precision, lng double precision,
+  helpful int, created_at timestamptz, author text, mine boolean, voted boolean, status text
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select t.id, t.category, t.body, t.stop_id, t.lat, t.lng, t.helpful, t.created_at,
+         public.public_name(t.user_id),
+         coalesce(t.user_id = (select auth.uid()), false),
+         exists (select 1 from public.tip_votes v where v.tip_id = t.id and v.user_id = (select auth.uid())),
+         t.status
+    from public.community_tips t
+   where t.route_id = p_route_id
+     and (t.status = 'visible' or (p_include_hidden and public.is_admin()))
+     and (public.can_see_author(t.user_id) or (p_include_hidden and public.is_admin()))
+   order by t.created_at desc
+   limit 200;
+$$;
+
+-- Approved tricycle routes and terminals, small enough for the map and
+-- the trip planner (no votes or names).
+create or replace function public.community_places(p_route_id text)
+returns table (id uuid, kind text, name text, vehicles text[], fare_default numeric, fare_solo numeric, fare_shared numeric,
+               hours text, lat double precision, lng double precision, path jsonb, confirms int)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select p.id, p.kind, p.name, p.vehicles, p.fare_default, p.fare_solo, p.fare_shared, p.hours, p.lat, p.lng, p.path, p.confirms
+    from public.community_posts p
+   where p.route_id = p_route_id and p.status = 'approved'
+     and not exists (select 1 from public.profiles b where b.id = p.user_id and b.banned_at is not null)
+   order by p.created_at desc
+   limit 300;
+$$;
+revoke all on function public.community_places(text) from public;
+grant execute on function public.community_places(text) to anon, authenticated;
+
+create or replace function public.create_post(
+  p_route_id text, p_kind text, p_name text, p_note text, p_vehicles text[],
+  p_fare_default numeric, p_fare_solo numeric, p_fare_shared numeric, p_hours text,
+  p_lat double precision, p_lng double precision, p_path jsonb, p_anonymous boolean default false
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := public.require_member();
+  v_id uuid;
+  v_pt jsonb;
+begin
+  if (select count(*) from public.community_posts where user_id = v_user and created_at > now() - interval '1 day') >= 5 then
+    raise exception 'You have added 5 routes or terminals today. Please try again tomorrow.';
+  end if;
+  if p_kind = 'local_route' then
+    if p_path is null or jsonb_typeof(p_path) <> 'array' or jsonb_array_length(p_path) < 2 then
+      raise exception 'Draw the route on the map (at least 2 points).';
+    end if;
+    for v_pt in select * from jsonb_array_elements(p_path) loop
+      if jsonb_typeof(v_pt) <> 'array' or jsonb_array_length(v_pt) <> 2
+         or jsonb_typeof(v_pt -> 0) <> 'number' or jsonb_typeof(v_pt -> 1) <> 'number'
+         or abs((v_pt ->> 0)::float) > 180 or abs((v_pt ->> 1)::float) > 90 then
+        raise exception 'The route drawing is not valid.';
+      end if;
+    end loop;
+  elsif p_kind = 'terminal' then
+    p_path := null;
+  else
+    raise exception 'Choose a route or a terminal.';
+  end if;
+  insert into public.community_posts (user_id, route_id, kind, name, note, vehicles, fare_default, fare_solo, fare_shared,
+                                      hours, lat, lng, path, anonymous)
+  values (v_user, left(p_route_id, 60), p_kind, trim(p_name), nullif(trim(p_note), ''), p_vehicles,
+          p_fare_default, p_fare_solo, p_fare_shared, nullif(trim(p_hours), ''),
+          round(p_lat::numeric, 6), round(p_lng::numeric, 6), p_path, coalesce(p_anonymous, false))
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+revoke all on function public.create_post(text, text, text, text, text[], numeric, numeric, numeric, text, double precision, double precision, jsonb, boolean) from public, anon;
+grant execute on function public.create_post(text, text, text, text, text[], numeric, numeric, numeric, text, double precision, double precision, jsonb, boolean) to authenticated;
+
+create or replace function public.delete_post(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  delete from public.community_posts where id = p_id and (user_id = auth.uid() or public.is_admin());
+  if not found then raise exception 'Post not found, or it is not yours.'; end if;
+  delete from public.community_comments where target_kind = 'post' and target_id = p_id;
+end;
+$$;
+revoke all on function public.delete_post(uuid) from public, anon;
+grant execute on function public.delete_post(uuid) to authenticated;
+
+-- Up (1), down (-1) or take back (0). Not on your own post.
+create or replace function public.vote_post(p_id uuid, p_value int)
+returns table (up int, down int, my_vote int)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := public.require_member();
+begin
+  if not exists (select 1 from public.community_posts p where p.id = p_id and p.status = 'approved' and p.user_id is distinct from v_user) then
+    raise exception 'You cannot vote on this.';
+  end if;
+  delete from public.post_votes v where v.post_id = p_id and v.user_id = v_user;
+  if p_value in (-1, 1) then
+    insert into public.post_votes (post_id, user_id, value) values (p_id, v_user, p_value);
+  end if;
+  update public.community_posts p
+     set up = (select count(*) from public.post_votes v where v.post_id = p_id and v.value = 1),
+         down = (select count(*) from public.post_votes v where v.post_id = p_id and v.value = -1)
+   where p.id = p_id;
+  return query select p.up, p.down, case when p_value in (-1, 1) then p_value else 0 end
+    from public.community_posts p where p.id = p_id;
+end;
+$$;
+revoke all on function public.vote_post(uuid, int) from public, anon;
+grant execute on function public.vote_post(uuid, int) to authenticated;
+
+-- "I've ridden this" / "I've been here": tap again to undo.
+create or replace function public.confirm_post(p_id uuid)
+returns table (confirms int, my_confirm boolean)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := public.require_member();
+  v_on boolean;
+begin
+  if not exists (select 1 from public.community_posts p where p.id = p_id and p.status = 'approved') then
+    raise exception 'You cannot confirm this.';
+  end if;
+  delete from public.post_confirms c where c.post_id = p_id and c.user_id = v_user;
+  v_on := not found;
+  if v_on then insert into public.post_confirms (post_id, user_id) values (p_id, v_user); end if;
+  update public.community_posts p set confirms = (select count(*) from public.post_confirms c where c.post_id = p_id) where p.id = p_id;
+  return query select p.confirms, v_on from public.community_posts p where p.id = p_id;
+end;
+$$;
+revoke all on function public.confirm_post(uuid) from public, anon;
+grant execute on function public.confirm_post(uuid) to authenticated;
+
+-- ----- comments -----
+
+create or replace function public.list_comments(p_kind text, p_id uuid)
+returns table (id uuid, body text, author text, author_driver boolean, mine boolean, created_at timestamptz)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select c.id, c.body, public.public_name(c.user_id), public.is_driver_account(c.user_id),
+         c.user_id = (select auth.uid()), c.created_at
+    from public.community_comments c
+   where c.target_kind = p_kind and c.target_id = p_id and c.status = 'visible'
+     and public.can_see_author(c.user_id)
+   order by c.created_at
+   limit 200;
+$$;
+revoke all on function public.list_comments(text, uuid) from public;
+grant execute on function public.list_comments(text, uuid) to anon, authenticated;
+
+create or replace function public.add_comment(p_kind text, p_id uuid, p_body text)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := public.require_member();
+  v_id uuid;
+begin
+  if p_kind = 'post' and not exists (select 1 from public.community_posts where id = p_id and status = 'approved') then
+    raise exception 'You can comment once this is approved.';
+  elsif p_kind = 'tip' and not exists (select 1 from public.community_tips where id = p_id and status = 'visible') then
+    raise exception 'This tip is gone.';
+  elsif p_kind not in ('post', 'tip') then
+    raise exception 'Unknown post.';
+  end if;
+  if exists (select 1 from public.community_comments where user_id = v_user and created_at > now() - interval '10 seconds') then
+    raise exception 'Please wait a moment before commenting again.';
+  end if;
+  if (select count(*) from public.community_comments where user_id = v_user and created_at > now() - interval '1 day') >= 30 then
+    raise exception 'You have written 30 comments today. Please try again tomorrow.';
+  end if;
+  insert into public.community_comments (target_kind, target_id, user_id, body)
+  values (p_kind, p_id, v_user, trim(p_body))
+  returning id into v_id;
+  if p_kind = 'post' then
+    update public.community_posts set comments = comments + 1 where id = p_id;
+  end if;
+  return v_id;
+end;
+$$;
+revoke all on function public.add_comment(text, uuid, text) from public, anon;
+grant execute on function public.add_comment(text, uuid, text) to authenticated;
+
+create or replace function public.delete_comment(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_kind text;
+  v_target uuid;
+begin
+  delete from public.community_comments where id = p_id and (user_id = auth.uid() or public.is_admin())
+  returning target_kind, target_id into v_kind, v_target;
+  if not found then raise exception 'Comment not found, or it is not yours.'; end if;
+  if v_kind = 'post' then
+    update public.community_posts set comments = greatest(0, comments - 1) where id = v_target;
+  end if;
+end;
+$$;
+revoke all on function public.delete_comment(uuid) from public, anon;
+grant execute on function public.delete_comment(uuid) to authenticated;
+
+-- ----- chat -----
+
+-- Messages of the last hour after message number p_after (0 = all).
+create or replace function public.list_chat(p_route_id text, p_after bigint default 0)
+returns table (id bigint, body text, author text, author_driver boolean, mine boolean, created_at timestamptz)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select m.id, m.body, public.public_name(m.user_id, m.anonymous), not m.anonymous and public.is_driver_account(m.user_id),
+         m.user_id = (select auth.uid()), m.created_at
+    from public.chat_messages m
+   where m.route_id = p_route_id and m.id > coalesce(p_after, 0)
+     and m.created_at > now() - interval '1 hour' and m.status = 'visible'
+     and public.can_see_author(m.user_id)
+   order by m.id
+   limit 200;
+$$;
+revoke all on function public.list_chat(text, bigint) from public;
+grant execute on function public.list_chat(text, bigint) to anon, authenticated;
+
+create or replace function public.send_chat(p_route_id text, p_body text, p_anonymous boolean default false)
+returns bigint
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := public.require_member();
+  v_id bigint;
+begin
+  if char_length(trim(coalesce(p_body, ''))) = 0 then raise exception 'Write a message first.'; end if;
+  if exists (select 1 from public.chat_messages where user_id = v_user and created_at > now() - interval '3 seconds') then
+    raise exception 'Slow down: you can send a message every 3 seconds.';
+  end if;
+  if (select count(*) from public.chat_messages where user_id = v_user and created_at > now() - interval '1 hour') >= 60 then
+    raise exception 'You have sent 60 messages this hour. Take a short break.';
+  end if;
+  delete from public.chat_messages where created_at < now() - interval '1 day';
+  insert into public.chat_messages (route_id, user_id, body, anonymous)
+  values (left(p_route_id, 60), v_user, trim(p_body), coalesce(p_anonymous, false))
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+revoke all on function public.send_chat(text, text, boolean) from public, anon;
+grant execute on function public.send_chat(text, text, boolean) to authenticated;
+
+create or replace function public.delete_chat(p_id bigint)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  delete from public.chat_messages where id = p_id and (user_id = auth.uid() or public.is_admin());
+  if not found then raise exception 'Message not found, or it is not yours.'; end if;
+end;
+$$;
+revoke all on function public.delete_chat(bigint) from public, anon;
+grant execute on function public.delete_chat(bigint) to authenticated;
+
+-- ----- reporting, blocking, profiles -----
+
+create or replace function public.report_content(p_kind text, p_id text, p_reason text, p_note text default null)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := public.require_member();
+  v_author uuid := public.content_author(p_kind, p_id);
+  v_count int;
+begin
+  if p_kind not in ('post', 'tip', 'comment', 'chat') then raise exception 'Unknown content.'; end if;
+  if v_author is null and not exists (select 1 from public.community_posts where p_kind = 'post' and id::text = p_id) then
+    raise exception 'That is already gone.';
+  end if;
+  if v_author = v_user then raise exception 'You can’t report your own content.'; end if;
+  if (select count(*) from public.content_reports where reporter = v_user and created_at > now() - interval '1 day') >= 20 then
+    raise exception 'You have sent 20 reports today. Thank you. Please try again tomorrow.';
+  end if;
+  insert into public.content_reports (target_kind, target_id, reporter, reason, note)
+  values (p_kind, p_id, v_user, p_reason, nullif(left(trim(coalesce(p_note, '')), 300), ''))
+  on conflict (target_kind, target_id, reporter) do nothing;
+  select count(*) into v_count from public.content_reports where target_kind = p_kind and target_id = p_id and status = 'open';
+  -- Three different people: hide it until an admin reviews it.
+  if p_kind = 'post' then
+    update public.community_posts set reports = v_count, status = case when v_count >= 3 and status = 'approved' then 'hidden' else status end where id::text = p_id;
+  elsif p_kind = 'tip' then
+    update public.community_tips set status = case when v_count >= 3 then 'hidden' else status end where id::text = p_id;
+  elsif p_kind = 'comment' then
+    update public.community_comments set reports = v_count, status = case when v_count >= 3 then 'hidden' else status end where id::text = p_id;
+  else
+    update public.chat_messages set reports = v_count, status = case when v_count >= 3 then 'hidden' else status end where id::text = p_id;
+  end if;
+end;
+$$;
+revoke all on function public.report_content(text, text, text, text) from public, anon;
+grant execute on function public.report_content(text, text, text, text) to authenticated;
+
+-- Block whoever wrote this (the app never learns who that is).
+create or replace function public.block_author(p_kind text, p_id text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := public.require_member();
+  v_author uuid := public.content_author(p_kind, p_id);
+begin
+  if v_author is null then raise exception 'We can’t block this person.'; end if;
+  if v_author = v_user then raise exception 'That’s you.'; end if;
+  if (select count(*) from public.user_blocks where blocker = v_user) >= 500 then raise exception 'You have blocked too many people.'; end if;
+  insert into public.user_blocks (blocker, blocked) values (v_user, v_author) on conflict do nothing;
+end;
+$$;
+revoke all on function public.block_author(text, text) from public, anon;
+grant execute on function public.block_author(text, text) to authenticated;
+
+create or replace function public.list_blocked()
+returns table (blocked uuid, name text, created_at timestamptz)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select b.blocked, public.public_name(b.blocked), b.created_at
+    from public.user_blocks b where b.blocker = (select auth.uid()) order by b.created_at desc;
+$$;
+revoke all on function public.list_blocked() from public, anon;
+grant execute on function public.list_blocked() to authenticated;
+
+create or replace function public.unblock_user(p_user_id uuid)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  delete from public.user_blocks where blocker = (select auth.uid()) and blocked = p_user_id;
+$$;
+revoke all on function public.unblock_user(uuid) from public, anon;
+grant execute on function public.unblock_user(uuid) to authenticated;
+
+-- A contributor's public card, opened from one of their posts.
+create or replace function public.contributor_card(p_kind text, p_id text)
+returns table (name text, is_driver boolean, joined timestamptz, routes int, terminals int, tips int, comments int,
+               avatar_v bigint, anonymous boolean)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_author uuid := public.content_author(p_kind, p_id);
+  v_anon boolean := case p_kind
+    when 'post' then (select x.anonymous from public.community_posts x where x.id::text = p_id)
+    when 'chat' then (select x.anonymous from public.chat_messages x where x.id::text = p_id)
+    else false end;
+begin
+  if v_author is null or coalesce(v_anon, false) or not public.can_see_author(v_author) then
+    return query select 'Anonymous commuter'::text, false, null::timestamptz, 0, 0, 0, 0, null::bigint, true;
+    return;
+  end if;
+  return query select
+    public.public_name(v_author), public.is_driver_account(v_author),
+    date_trunc('month', (select p.created_at from public.profiles p where p.id = v_author)),
+    (select count(*)::int from public.community_posts x where x.user_id = v_author and x.status = 'approved' and x.kind = 'local_route' and not x.anonymous),
+    (select count(*)::int from public.community_posts x where x.user_id = v_author and x.status = 'approved' and x.kind = 'terminal' and not x.anonymous),
+    (select count(*)::int from public.community_tips x where x.user_id = v_author and x.status = 'visible'),
+    (select count(*)::int from public.community_comments x where x.user_id = v_author and x.status = 'visible'),
+    public.photo_version(v_author, 'avatar'),
+    false;
+end;
+$$;
+revoke all on function public.contributor_card(text, text) from public;
+grant execute on function public.contributor_card(text, text) to anon, authenticated;
+
+-- When an account is deleted: pending and rejected posts go with it;
+-- approved routes and terminals stay, without the name.
+create or replace function public.before_account_deleted()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  delete from public.community_posts where user_id = old.id and status <> 'approved';
+  update public.community_posts set anonymous = true where user_id = old.id;
+  delete from public.community_comments where user_id = old.id;
+  return old;
+end;
+$$;
+drop trigger if exists before_account_deleted on auth.users;
+create trigger before_account_deleted before delete on auth.users for each row execute function public.before_account_deleted();
+
+-- ----- admin -----
+
+create or replace function public.admin_review_queue()
+returns table (id uuid, kind text, name text, note text, vehicles text[], fare_default numeric, fare_solo numeric, fare_shared numeric,
+               hours text, lat double precision, lng double precision, path jsonb, author text, author_driver boolean, created_at timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  return query select p.id, p.kind, p.name, p.note, p.vehicles, p.fare_default, p.fare_solo, p.fare_shared, p.hours, p.lat, p.lng, p.path,
+                      coalesce((select pr.full_name from public.profiles pr where pr.id = p.user_id), 'Deleted account'),
+                      public.is_driver_account(p.user_id), p.created_at
+    from public.community_posts p where p.status = 'review' order by p.created_at limit 100;
+end;
+$$;
+revoke all on function public.admin_review_queue() from public, anon;
+grant execute on function public.admin_review_queue() to authenticated;
+
+create or replace function public.admin_set_post_status(p_id uuid, p_status text, p_note text default null)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  if p_status not in ('review', 'approved', 'rejected', 'hidden') then raise exception 'Unknown status.'; end if;
+  update public.community_posts
+     set status = p_status, review_note = nullif(left(trim(coalesce(p_note, '')), 200), ''), reviewed_at = now()
+   where id = p_id;
+end;
+$$;
+revoke all on function public.admin_set_post_status(uuid, text, text) from public, anon;
+grant execute on function public.admin_set_post_status(uuid, text, text) to authenticated;
+
+-- Reported content, one row per post / tip / comment / message.
+create or replace function public.admin_content_reports()
+returns table (target_kind text, target_id text, snippet text, author text, author_id uuid, author_banned boolean,
+               target_status text, reports bigint, reasons text[], notes text[], last_at timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  return query
+  select r.target_kind, r.target_id,
+         case r.target_kind
+           when 'post' then (select x.name || coalesce(': ' || x.note, '') from public.community_posts x where x.id::text = r.target_id)
+           when 'tip' then (select x.body from public.community_tips x where x.id::text = r.target_id)
+           when 'comment' then (select x.body from public.community_comments x where x.id::text = r.target_id)
+           else (select x.body from public.chat_messages x where x.id::text = r.target_id) end,
+         coalesce((select pr.full_name from public.profiles pr where pr.id = public.content_author(r.target_kind, r.target_id)), 'Unknown'),
+         public.content_author(r.target_kind, r.target_id),
+         exists (select 1 from public.profiles pr where pr.id = public.content_author(r.target_kind, r.target_id) and pr.banned_at is not null),
+         case r.target_kind
+           when 'post' then (select x.status from public.community_posts x where x.id::text = r.target_id)
+           when 'tip' then (select x.status from public.community_tips x where x.id::text = r.target_id)
+           when 'comment' then (select x.status from public.community_comments x where x.id::text = r.target_id)
+           else (select x.status from public.chat_messages x where x.id::text = r.target_id) end,
+         count(*), array_agg(distinct r.reason), array_remove(array_agg(r.note), null), max(r.created_at)
+    from public.content_reports r
+   where r.status = 'open'
+   group by r.target_kind, r.target_id
+   order by max(r.created_at) desc
+   limit 200;
+end;
+$$;
+revoke all on function public.admin_content_reports() from public, anon;
+grant execute on function public.admin_content_reports() to authenticated;
+
+-- 'dismiss' = it's fine (shows again), 'hide' = keep it hidden, 'delete' = remove it.
+create or replace function public.admin_resolve_content(p_kind text, p_id text, p_action text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  if p_action not in ('dismiss', 'hide', 'delete') then raise exception 'Unknown action.'; end if;
+  if p_action = 'delete' then
+    if p_kind = 'post' then delete from public.community_posts where id::text = p_id;
+    elsif p_kind = 'tip' then delete from public.community_tips where id::text = p_id;
+    elsif p_kind = 'comment' then delete from public.community_comments where id::text = p_id;
+    else delete from public.chat_messages where id::text = p_id; end if;
+  else
+    if p_kind = 'post' then
+      update public.community_posts set status = case when p_action = 'hide' then 'hidden' when status = 'hidden' then 'approved' else status end, reports = 0 where id::text = p_id;
+    elsif p_kind = 'tip' then
+      update public.community_tips set status = case when p_action = 'hide' then 'hidden' else 'visible' end where id::text = p_id;
+    elsif p_kind = 'comment' then
+      update public.community_comments set status = case when p_action = 'hide' then 'hidden' else 'visible' end, reports = 0 where id::text = p_id;
+    else
+      update public.chat_messages set status = case when p_action = 'hide' then 'hidden' else 'visible' end, reports = 0 where id::text = p_id;
+    end if;
+  end if;
+  update public.content_reports set status = case when p_action = 'dismiss' then 'dismissed' else 'actioned' end
+   where target_kind = p_kind and target_id = p_id and status = 'open';
+end;
+$$;
+revoke all on function public.admin_resolve_content(text, text, text) from public, anon;
+grant execute on function public.admin_resolve_content(text, text, text) to authenticated;
+
+create or replace function public.admin_ban_user(p_user_id uuid, p_banned boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  if p_user_id = auth.uid() then raise exception 'You can’t ban yourself.'; end if;
+  update public.profiles set banned_at = case when p_banned then now() else null end where id = p_user_id;
+end;
+$$;
+revoke all on function public.admin_ban_user(uuid, boolean) from public, anon;
+grant execute on function public.admin_ban_user(uuid, boolean) to authenticated;
+
+create or replace function public.admin_list_banned()
+returns table (user_id uuid, name text, banned_at timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  return query select p.id, coalesce(p.full_name, 'No name'), p.banned_at from public.profiles p where p.banned_at is not null order by p.banned_at desc;
+end;
+$$;
+revoke all on function public.admin_list_banned() from public, anon;
+grant execute on function public.admin_list_banned() to authenticated;
+
+-- ----- ride reports: more reasons, and route problems -----
+alter table public.ride_reports add column if not exists vehicle text check (char_length(vehicle) <= 80);
+alter table public.ride_reports add column if not exists context text check (char_length(context) <= 300);
+alter table public.ride_reports drop constraint if exists ride_reports_category_check;
+alter table public.ride_reports add constraint ride_reports_category_check
+  check (category in ('overpricing', 'harassment', 'reckless', 'rude', 'other', 'missing_route', 'wrong_route', 'route_problem'));

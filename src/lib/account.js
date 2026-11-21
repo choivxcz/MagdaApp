@@ -104,8 +104,13 @@ export async function deleteSavedTrip(id) {
   return must(await supabase.from('saved_trips').delete().eq('id', id));
 }
 
-export async function fileReport({ plate, category, details }) {
-  return must(await supabase.from('ride_reports').insert({ plate: plate || null, category, details: details || null }));
+// vehicle: the jeep's body number or colors when the plate wasn't seen.
+// context: the trip it happened on (from / to), or the route problem's place.
+export async function fileReport({ plate, category, details, vehicle, context }) {
+  const row = { plate: plate || null, category, details: details || null };
+  if (vehicle) row.vehicle = vehicle;
+  if (context) row.context = context;
+  return must(await supabase.from('ride_reports').insert(row));
 }
 
 export async function listMyReports() {

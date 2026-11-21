@@ -40,6 +40,11 @@ export function prepareRoute(route) {
       minX = Math.min(minX, x); minY = Math.min(minY, y);
       maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
     }
+    // Stretches on a bridge (from `npm run places`): no getting on or off there.
+    leg.noStop = (route.bridges ?? [])
+      .map((b) => b.ends.map((p) => projectOnRoute(leg, p)))
+      .filter(([a, b]) => a.offRoute < 20 && b.offRoute < 20)
+      .map(([a, b]) => [Math.min(a.along, b.along), Math.max(a.along, b.along)]);
     legs[direction] = leg;
   }
   return { ...route, legs, bounds: [[minX, minY], [maxX, maxY]] };

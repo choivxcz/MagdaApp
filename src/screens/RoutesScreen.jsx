@@ -1,5 +1,5 @@
-import { lazy, Suspense, useState } from 'react';
-import { PageHeader, PageSkeleton, Segmented, navigate } from '../components/ui.jsx';
+import { useEffect, useState } from 'react';
+import { PageHeader, Segmented, navigate } from '../components/ui.jsx';
 import Icon from '../components/Icon.jsx';
 import { computeFare, peso } from '../lib/fare.js';
 import { DIRECTIONS, DIRECTION_KEYS, seatStatus } from '../lib/directions.js';
@@ -7,16 +7,16 @@ import { usePrefs } from '../lib/prefs.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useTips, TIP_CATEGORIES, tipAge } from '../lib/community.js';
 import { stopPlace } from '../lib/places.js';
-
-
-const CommunityScreen = lazy(() => import('./CommunityScreen.jsx'));
+import { useCommunityPlaces, VEHICLES, fareText } from '../lib/communityPosts.js';
 
 export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
   const [query, setQuery] = useState('');
   const { user } = useAuth();
   const { tips } = useTips(route.id, user?.id ?? null);
+  const community = useCommunityPlaces(route.id);
+  // Old links to the tips page now open the Community tab.
+  useEffect(() => { if (sub === 'community') navigate('community'); }, [sub]);
   if (sub === 'detail') return <RouteDetail route={route} jeepneys={jeepneys} openOnMap={openOnMap} />;
-  if (sub === 'community') return <Suspense fallback={<PageSkeleton />}><CommunityScreen route={route} /></Suspense>;
 
   const q = query.trim().toLowerCase();
   const out = route.legs.to_santa_cruz;
@@ -25,6 +25,7 @@ export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
   const withSeats = jeepneys.filter((j) => seatStatus(j).level !== 'full').length;
   const routeMatches = !q || `${route.name} ${out.via}`.toLowerCase().includes(q);
   const stops = route.stops.filter((s) => !q || s.name.toLowerCase().includes(q));
+  const local = community.filter((p) => !q || p.name.toLowerCase().includes(q));
 
   return (
     <div className="page">
@@ -60,18 +61,36 @@ export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
           </>
         )}
 
+        {local.length > 0 && (
+          <>
+            <div className="section-label"><span>Tricycle routes & terminals</span><span>{local.length} from commuters</span></div>
+            <div className="menu-card">
+              {local.map((p) => (
+                <button key={p.id} className="menu-row" onClick={() => openOnMap({ focus: { id: p.id, kind: p.kind, name: p.name, point: p.point, path: p.path } })}>
+                  <span className="menu-icon community"><Icon name={p.kind === 'terminal' ? 'terminal' : 'routes'} size={20} /></span>
+                  <span className="menu-text">
+                    <span className="menu-title">{p.name} <span className="pill community-pill">Community</span></span>
+                    <span className="menu-sub">{[p.vehicles.map((v) => VEHICLES[v]?.label ?? v).join(', '), fareText(p.fares)].filter(Boolean).join(' · ')}</span>
+                  </span>
+                  <Icon name="chevron" size={18} className="menu-chevron" />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
         {!q && (
           <>
             <div className="section-label"><span>From commuters</span><span>{tips.length ? `${tips.length} tip${tips.length === 1 ? '' : 's'}` : ''}</span></div>
-            <button className="route-card" onClick={() => navigate('routes/community')}>
+            <button className="route-card" onClick={() => navigate('community')}>
               <div className="route-card-head">
                 <span className="tile"><Icon name="chat" size={20} /></span>
                 <span className="route-card-name">
-                  <b>Community tips</b>
+                  <b>Community</b>
                   <span className="sub">
                     {tips[0]
                       ? `${TIP_CATEGORIES[tips[0].category].label}: “${tips[0].body.length > 70 ? `${tips[0].body.slice(0, 70)}…` : tips[0].body}” · ${tipAge(tips[0].createdAt)}`
-                      : 'Where people wait, route changes, fares, tricycles. Share what you know.'}
+                      : 'Tricycle routes, terminals, tips and chat from commuters. Share what you know.'}
                   </span>
                 </span>
                 <Icon name="chevron" size={18} className="menu-chevron" />
@@ -98,7 +117,7 @@ export default function RoutesScreen({ route, jeepneys, sub, openOnMap }) {
           </>
         )}
 
-        {!routeMatches && stops.length === 0 && <p className="hint center">Nothing matches “{query}”.</p>}
+        {!routeMatches && stops.length === 0 && local.length === 0 && <p className="hint center">Nothing matches “{query}”.</p>}
       </div>
     </div>
   );
